@@ -231,7 +231,148 @@ async def check_bio(message: types.Message):
 async def monitor(message: types.Message):
     await check_bio(message)
 
-# Callback handlers
+# Callback handlers for settings
+@dp.callback_query(lambda c: c.data == "change_limit")
+async def change_limit_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    for limit in [1, 2, 3, 5, 10]:
+        kb.button(text=f"{limit} Warnings", callback_data=f"set_limit_{limit}")
+    kb.button(text="⬅ Back", callback_data="back_to_settings")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚠ Select Warn Limit:", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("set_limit_"))
+async def set_limit_callback(call: types.CallbackQuery):
+    limit = int(call.data.split("_")[2])
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET warn_limit=? WHERE chat_id=?", (limit, call.message.chat.id))
+        await db.commit()
+    
+    # Refresh settings menu
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                limit, penalty, apply_to = row
+            else:
+                limit, penalty, apply_to = 3, "mute", "members"
+    
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="✔︎ & Close", callback_data="save_and_close")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+    await call.answer(f"✅ Warn limit set to {limit}")
+
+@dp.callback_query(lambda c: c.data == "change_penalty")
+async def change_penalty_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    penalties = ["mute", "kick", "ban"]
+    for penalty in penalties:
+        kb.button(text=penalty.capitalize(), callback_data=f"set_penalty_{penalty}")
+    kb.button(text="⬅ Back", callback_data="back_to_settings")
+    kb.adjust(1)
+    
+    await call.message.edit_text("🚨 Select Penalty:", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("set_penalty_"))
+async def set_penalty_callback(call: types.CallbackQuery):
+    penalty = call.data.split("_")[2]
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET penalty=? WHERE chat_id=?", (penalty, call.message.chat.id))
+        await db.commit()
+    
+    # Refresh settings menu
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                limit, penalty, apply_to = row
+            else:
+                limit, penalty, apply_to = 3, "mute", "members"
+    
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="✔︎ & Close", callback_data="save_and_close")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+    await call.answer(f"✅ Penalty set to {penalty}")
+
+@dp.callback_query(lambda c: c.data == "change_apply")
+async def change_apply_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    options = ["members", "admins", "everyone"]
+    for option in options:
+        kb.button(text=option.capitalize(), callback_data=f"set_apply_{option}")
+    kb.button(text="⬅ Back", callback_data="back_to_settings")
+    kb.adjust(1)
+    
+    await call.message.edit_text("👥 Apply To:", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("set_apply_"))
+async def set_apply_callback(call: types.CallbackQuery):
+    apply_to = call.data.split("_")[2]
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET apply_to=? WHERE chat_id=?", (apply_to, call.message.chat.id))
+        await db.commit()
+    
+    # Refresh settings menu
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                limit, penalty, apply_to = row
+            else:
+                limit, penalty, apply_to = 3, "mute", "members"
+    
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="✔︎ & Close", callback_data="save_and_close")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+    await call.answer(f"✅ Apply to set to {apply_to}")
+
+@dp.callback_query(lambda c: c.data == "back_to_settings")
+async def back_to_settings_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                limit, penalty, apply_to = row
+            else:
+                limit, penalty, apply_to = 3, "mute", "members"
+    
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="✔︎ & Close", callback_data="save_and_close")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data == "save_and_close")
+async def save_and_close_callback(call: types.CallbackQuery):
+    await call.message.delete()
+    await call.answer("✅ Settings saved and closed!")
+
 @dp.callback_query(lambda c: c.data == "open_here_group")
 async def open_here_group_callback(call: types.CallbackQuery):
     await call.answer(
