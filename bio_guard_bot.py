@@ -98,23 +98,7 @@ async def start_command(message: types.Message):
 # Settings command
 @dp.message(Command("settings"))
 async def open_settings(message: types.Message):
-    # Check if command is used in a group
-    if message.chat.type in ["group", "supergroup"]:
-        kb = InlineKeyboardBuilder()
-        # Button to open settings in private chat
-        kb.button(text="☞ Open in Private ☞", url=f"https://t.me/{(await bot.get_me()).username}?start=settings")
-        # Button to open settings in current group (will show error message)
-        kb.button(text="☞ Open Here ☞", callback_data="open_here_group")
-        kb.adjust(2)
-        
-        await message.reply(
-            "🔧 <b>Settings Menu</b>\n\n"
-            "Choose how you want to access the settings:",
-            reply_markup=kb.as_markup()
-        )
-        return
-    
-    # Handle private chat settings
+    # Settings now accessible everywhere - removed group/private chat restriction
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
@@ -134,8 +118,8 @@ async def open_settings(message: types.Message):
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
-# Bio checking logic
-bio_pattern = re.compile(r"(https?://|t\.me/|@\w+)", re.IGNORECASE)
+# Bio checking logic - Improved link detection
+bio_pattern = re.compile(r"(https?://|t\.me/|@\w+|telegram\.me/|t\.me/joinchat/|t\.me/\+|telegram\.dog/)", re.IGNORECASE)
 
 async def check_bio(message: types.Message):
     if message.chat.type not in ["group", "supergroup"]:
@@ -175,15 +159,25 @@ async def check_bio(message: types.Message):
         f"Reason: Bio contains link."
     )
     
-    # Auto-delete warning after 1 minute
+    # Auto-delete warning after 30 seconds (shorter time for better UX)
     async def delete_warning():
-        await asyncio.sleep(60)
+        await asyncio.sleep(30)
         try:
             await warning_msg.delete()
         except:
             pass
     
     asyncio.create_task(delete_warning())
+    
+    # Auto-delete bot's own message after 30 seconds
+    async def delete_bot_message():
+        await asyncio.sleep(30)
+        try:
+            await message.delete()
+        except:
+            pass
+    
+    asyncio.create_task(delete_bot_message())
 
     # Apply penalty if limit reached
     if count >= limit:
@@ -212,13 +206,23 @@ async def check_bio(message: types.Message):
                 f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} warnings.",
                 reply_markup=kb.as_markup()
             )
+            
+            # Auto-delete penalty success message
+            async def delete_penalty_success():
+                await asyncio.sleep(30)
+                try:
+                    await action_msg.delete()
+                except:
+                    pass
+            
+            asyncio.create_task(delete_penalty_success())
         else:
             action_msg = await message.reply(
                 f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
             )
         
         async def delete_action():
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)  # Shorter time for better UX
             try:
                 await action_msg.delete()
             except:
