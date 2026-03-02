@@ -44,6 +44,31 @@ async def init_db():
 # Start command
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
+    # Check if the command includes arguments (like /start settings)
+    command_args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+    
+    if command_args and command_args[0] == "settings":
+        # If user clicked "Open in Private" from group, redirect to settings
+        async with aiosqlite.connect("bio_guard.db") as db:
+            async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+                row = await cur.fetchone()
+                if not row:
+                    await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to) VALUES (?, ?, ?, ?)", 
+                                   (message.chat.id, 3, "mute", "members"))
+                    await db.commit()
+                    row = (3, "mute", "members")
+        
+        limit, penalty, apply_to = row
+        kb = InlineKeyboardBuilder()
+        kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+        kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+        kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+        kb.button(text="✔︎ & Close", callback_data="save_and_close")
+        kb.adjust(2)
+        
+        await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+        return
+    
     kb = InlineKeyboardBuilder()
     try:
         bot_username = (await bot.get_me()).username
@@ -52,7 +77,7 @@ async def start_command(message: types.Message):
         kb.button(text="✚ Add To Group", url="https://t.me/your_bot_username?startgroup=true")
     
     kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
-    kb.adjust(1)
+    kb.adjust(2)
     
     await message.answer(
         f"🔗 <b>{BOT_NAME}</b>🔒\n"
@@ -73,10 +98,23 @@ async def start_command(message: types.Message):
 # Settings command
 @dp.message(Command("settings"))
 async def open_settings(message: types.Message):
-    if not message.chat.type == "private":
-        await message.reply("❌ Settings only available in private chat.")
+    # Check if command is used in a group
+    if message.chat.type in ["group", "supergroup"]:
+        kb = InlineKeyboardBuilder()
+        # Button to open settings in private chat
+        kb.button(text="☞ Open in Private ☞", url=f"https://t.me/{(await bot.get_me()).username}?start=settings")
+        # Button to open settings in current group (will show error message)
+        kb.button(text="☞ Open Here ☞", callback_data="open_here_group")
+        kb.adjust(2)
+        
+        await message.reply(
+            "🔧 <b>Settings Menu</b>\n\n"
+            "Choose how you want to access the settings:",
+            reply_markup=kb.as_markup()
+        )
         return
     
+    # Handle private chat settings
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
@@ -92,7 +130,7 @@ async def open_settings(message: types.Message):
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
     kb.button(text="✔︎ & Close", callback_data="save_and_close")
-    kb.adjust(1)
+    kb.adjust(2)
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
@@ -151,6 +189,7 @@ async def check_bio(message: types.Message):
     if count >= limit:
         bot_member = await bot.get_chat_member(message.chat.id, bot.id)
         kb = InlineKeyboardBuilder()
+        kb.adjust(1)
         action_taken = False
         
         if penalty == "mute" and bot_member.can_restrict_members:
@@ -193,6 +232,14 @@ async def monitor(message: types.Message):
     await check_bio(message)
 
 # Callback handlers
+@dp.callback_query(lambda c: c.data == "open_here_group")
+async def open_here_group_callback(call: types.CallbackQuery):
+    await call.answer(
+        "❌ Settings cannot be opened directly in groups. "
+        "Please use the 'Open in Private' option to configure settings.", 
+        show_alert=True
+    )
+
 @dp.callback_query(lambda c: c.data.startswith("unmute_"))
 async def unmute_user(call: types.CallbackQuery):
     user_id = int(call.data.split("_")[1])
