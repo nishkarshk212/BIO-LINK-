@@ -1,3 +1,52 @@
+#!/bin/bash
+
+# Complete Bio Guard Bot Deployment Script
+# Copy this ENTIRE content to your Ubuntu server and run it
+
+set -e
+
+echo "🚀 Starting Bio Guard Bot Deployment..."
+echo "======================================"
+
+# Update system and install dependencies
+echo "📦 Installing system dependencies..."
+apt update
+apt install -y python3 python3-pip python3-venv sqlite3
+
+# Create project directory
+echo "📁 Setting up project directory..."
+mkdir -p /opt/bio_guard_bot
+cd /opt/bio_guard_bot
+
+# Create virtual environment
+echo "🐍 Setting up Python environment..."
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+
+# Create requirements.txt
+echo "📝 Creating requirements file..."
+cat > requirements.txt << 'EOF'
+aiogram==3.24.0
+aiosqlite==0.22.1
+python-dotenv==1.0.0
+EOF
+
+# Install Python dependencies
+echo "📥 Installing Python packages..."
+pip install -r requirements.txt
+
+# Create environment file
+echo "🔐 Creating environment configuration..."
+cat > .env << 'EOF'
+BOT_TOKEN=8760760963:AAHx0_QhmQbnyOd3iji_YdKjQ3pHt6oJWWo
+API_ID=37004193
+API_HASH=6001bbc724920244c612e0f96de20abe
+EOF
+
+# Create the bot code
+echo "🤖 Creating bot application..."
+cat > bio_guard_bot.py << 'EOF'
 import re
 import asyncio
 import aiosqlite
@@ -91,7 +140,7 @@ async def open_settings(message: types.Message):
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
-    kb.button(text="✔︎ & Close", callback_data="save_and_close")
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
     kb.adjust(1)
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
@@ -243,3 +292,60 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+EOF
+
+# Set proper permissions
+echo "🔒 Setting file permissions..."
+chmod 600 .env
+chmod 755 bio_guard_bot.py
+
+# Create systemd service
+echo "⚙️ Creating systemd service..."
+cat > /etc/systemd/system/bio-guard-bot.service << 'EOF'
+[Unit]
+Description=Bio Guard Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bio_guard_bot
+Environment=PATH=/opt/bio_guard_bot/venv/bin
+ExecStart=/opt/bio_guard_bot/venv/bin/python bio_guard_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start service
+echo "🚀 Starting bot service..."
+systemctl daemon-reload
+systemctl enable bio-guard-bot.service
+systemctl start bio-guard-bot.service
+
+echo "======================================"
+echo "✅ DEPLOYMENT COMPLETE!"
+echo "======================================"
+echo "Bot is now running and will automatically restart if it crashes."
+echo ""
+echo "🔧 Useful commands:"
+echo "  Check status: systemctl status bio-guard-bot"
+echo "  View logs: journalctl -u bio-guard-bot -f"
+echo "  Restart bot: systemctl restart bio-guard-bot"
+echo ""
+echo "📝 Next steps:"
+echo "1. Add your bot to Telegram groups with admin permissions"
+echo "2. Use /start command to test"
+echo "3. Use /settings in private chat to configure"
+EOF
+
+# Make the script executable
+chmod +x /opt/bio_guard_bot/deploy_complete.sh
+
+echo "✅ Deployment script created successfully!"
+echo "To run the complete deployment, execute:"
+echo "sudo /opt/bio_guard_bot/deploy_complete.sh"

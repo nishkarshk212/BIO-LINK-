@@ -1,0 +1,17 @@
+[Unit]
+Description=Bio Guard Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bio_guard_bot
+Environment=PATH=/opt/bio_guard_bot/venv/bin
+ExecStart=/opt/bio_guard_bot/venv/bin/python bio_guard_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
