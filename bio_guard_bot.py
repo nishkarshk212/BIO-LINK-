@@ -95,10 +95,17 @@ async def start_command(message: types.Message):
         reply_markup=kb.as_markup()
     )
 
-# Settings command
+# Settings command - Owner only access
 @dp.message(Command("settings"))
 async def open_settings(message: types.Message):
-    # Settings accessible everywhere with improved interface
+    # Check if user is group owner
+    if message.chat.type in ["group", "supergroup"]:
+        chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        if chat_member.status != "creator":  # Only owner can access settings
+            await message.reply("❌ Only group owner can access settings!")
+            return
+    
+    # Settings logic
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
@@ -128,17 +135,28 @@ async def open_settings(message: types.Message):
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
-# Bio checking logic - Improved link detection
+# Bio checking logic - Improved detection
 bio_pattern = re.compile(r"(https?://|t\.me/|@\w+|telegram\.me/|t\.me/joinchat/|t\.me/\+|telegram\.dog/)", re.IGNORECASE)
 
 async def check_bio(message: types.Message):
     if message.chat.type not in ["group", "supergroup"]:
         return
 
-    user = await bot.get_chat(message.from_user.id)
-    bio = user.bio or ""
-
-    if not bio_pattern.search(bio):
+    try:
+        # Get user's bio with proper error handling
+        user = await bot.get_chat(message.from_user.id)
+        bio = user.bio or ""
+        
+        # Debug logging (can be removed in production)
+        print(f"User {message.from_user.id} bio: '{bio}'")
+        
+        if not bio_pattern.search(bio):
+            return
+            
+        print(f"Bio link detected for user {message.from_user.id}")
+        
+    except Exception as e:
+        print(f"Error getting user bio: {e}")
         return
 
     async with aiosqlite.connect("bio_guard.db") as db:
@@ -151,6 +169,20 @@ async def check_bio(message: types.Message):
                 limit, penalty, apply_to = 3, "mute", "members"
             else:
                 limit, penalty, apply_to = row
+
+        # Check if user should be affected based on settings
+        if apply_to == "members" and message.from_user.id == (await bot.get_me()).id:
+            return  # Don't apply to bot itself
+        elif apply_to == "admins":
+            chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+            if chat_member.status not in ["administrator", "creator"]:
+                return  # Not an admin
+        elif apply_to == "members_and_admins":
+            # Apply to both members and admins
+            pass
+        elif apply_to == "everyone":
+            # Apply to everyone including bot
+            pass
 
         # Add warning
         async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
@@ -401,6 +433,12 @@ async def apply_everyone_callback(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "open_settings_here")
 async def open_settings_here_callback(call: types.CallbackQuery):
+    # Check if user is group owner
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status != "creator":
+        await call.answer("❌ Only group owner can access settings!", show_alert=True)
+        return
+    
     # Open settings directly in the group
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
