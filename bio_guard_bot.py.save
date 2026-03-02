@@ -1,0 +1,685 @@
+import re
+import asyncio
+import aiosqlite
+import os
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, types
+from aiogram.client.default import DefaultBotProperties
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram.enums import ChatMemberStatus
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+# Load environment variables
+load_dotenv()
+
+TOKEN = os.getenv("BOT_TOKEN")
+
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher()
+
+# Get bot name
+BOT_NAME = "Bio Guard Bot"  # You can change this to your bot's actual name
+
+# ================= DATABASE =================
+
+# ================= START COMMAND =================
+
+@dp.message(Command("start"))
+async def start_command(message: types.Message):
+    # Create inline keyboard with buttons
+    kb = InlineKeyboardBuilder()
+    
+    # Add to group button with ✚ symbol
+    try:
+        bot_username = (await bot.get_me()).username
+        kb.button(text="✚ Add To Group", url=f"https://t.me/{bot_username}?startgroup=true")
+    except Exception:
+        # Fallback if we can't get the bot's username
+        kb.button(text="✚ Add To Group", url="https://t.me/your_bot_username?startgroup=true")
+    
+    # Owner button with ♛ symbol
+    kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
+    
+    kb.adjust(1)  # Stack buttons vertically
+    
+    # Get bot's profile photo
+    try:
+        bot_user = await bot.get_me()
+        # Get the bot's profile photos
+        photos = await bot.get_user_profile_photos(user_id=bot_user.id, limit=1)
+        
+        if photos.total_count > 0 and photos.photos:
+            # Get the largest size of the first photo
+            photo = photos.photos[0][-1]  # Last item is the largest size
+            
+            # Send the photo with the caption as the welcome message
+            await message.answer_photo(
+                photo=photo.file_id,
+                caption=f"🔗 <b>{BOT_NAME}</b> 🔒\n"
+                      f"👋 Hello! <b>{message.from_user.first_name}</b> I am an Automatic Bio Link Checker Bot.\n\n"
+                      f"🚫 I Detect And Restrict Users With Links In Their Bio.\n\n"
+                      f"🛡 Perfect For:\n"
+                      f"• Secure Groups\n"
+                      f"• Anti-Spam Control\n"
+                      f"• Clean Communities\n\n"
+                      f"⚡ How To Use:\n"
+                      f"1️⃣ Add Me To Your Group\n"
+                      f"2️⃣ Give Me Admin Permission\n"
+                      f"3️⃣ Enjoy Automatic Protection🔥\n\n"
+                      f"🔒 I Keep Your Group Safe From Link Spammers!",
+                reply_markup=kb.as_markup()
+            )
+        else:
+            # Fallback if no photo is available
+            await message.answer(
+                f"🔗 <b>{BOT_NAME}</b> 🔒\n"
+                f"👋 Hello! <b>{message.from_user.first_name}</b> I am an Automatic Bio Link Checker Bot.\n\n"
+                f"🚫 I Detect And Restrict Users With Links In Their Bio.\n\n"
+                f"🛡 Perfect For:\n"
+                f"• Secure Groups\n"
+                f"• Anti-Spam Control\n"
+                f"• Clean Communities\n\n"
+                f"⚡ How To Use:\n"
+                f"1️⃣ Add Me To Your Group\n"
+                f"2️⃣ Give Me Admin Permission\n"
+                f"3️⃣ Enjoy Automatic Protection🔥\n\n"
+                f"🔒 I Keep Your Group Safe From Link Spammers!",
+                reply_markup=kb.as_markup()
+            )
+    except Exception as e:
+        # Fallback if any error occurs
+        await message.answer(
+            f"🔗 <b>{BOT_NAME}</b> 🔒\n"
+            f"👋 Hello! <b>{message.from_user.first_name}</b> I am an Automatic Bio Link Checker Bot.\n\n"
+            f"🚫 I Detect And Restrict Users With Links In Their Bio.\n\n"
+            f"🛡 Perfect For:\n"
+            f"• Secure Groups\n"
+            f"• Anti-Spam Control\n"
+            f"• Clean Communities\n\n"
+            f"⚡ How To Use:\n"
+            f"1️⃣ Add Me To Your Group\n"
+            f"2️⃣ Give Me Admin Permission\n"
+            f"3️⃣ Enjoy Automatic Protection🔥\n\n"
+            f"🔒 I Keep Your Group Safe From Link Spammers!",
+            reply_markup=kb.as_markup()
+        )
+
+# ================= SETTINGS PANEL =================
+
+async def init_db():
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            chat_id INTEGER PRIMARY KEY,
+            warn_limit INTEGER DEFAULT 3,
+            penalty TEXT DEFAULT 'mute',
+            apply_to TEXT DEFAULT 'members'
+        )
+        """)
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS warns (
+            chat_id INTEGER,
+            user_id INTEGER,
+            count INTEGER,
+            PRIMARY KEY (chat_id, user_id)
+        )
+        """)
+        await db.commit()
+
+# ================= UTILITIES =================
+
+bio_pattern = re.compile(r"(https?://|t\.me/|@\w+)", re.IGNORECASE)
+
+# Define a pattern for links in messages (more comprehensive)
+link_pattern = re.compile(r'(https?://|www\.)[^\s/$.?#].[^\s]*|t\.me/\w+|t\.me/\w+/\w+|@[\w]+', re.IGNORECASE)
+
+async def is_owner(chat_id, user_id):
+    member = await bot.get_chat_member(chat_id, user_id)
+    return member.status == ChatMemberStatus.CREATOR
+
+async def is_admin(chat_id, user_id):
+    member = await bot.get_chat_member(chat_id, user_id)
+    return member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
+
+async def can_ban_users(chat_id, user_id):
+    member = await bot.get_chat_member(chat_id, user_id)
+    # Creator can always ban
+    if member.status == ChatMemberStatus.CREATOR:
+        return True
+    # Admin can ban if can_restrict_members is True
+    elif member.status == ChatMemberStatus.ADMINISTRATOR:
+        return getattr(member, 'can_restrict_members', False) or member.can_be_edited
+    return False
+
+async def get_settings(chat_id):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (chat_id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                return row
+            else:
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to) VALUES (?, ?, ?, ?)", (chat_id, 3, "mute", "members"))
+                await db.commit()
+                return (3, "mute", "members")
+
+async def add_warn(chat_id, user_id):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (chat_id, user_id)) as cur:
+            row = await cur.fetchone()
+            if row:
+                count = row[0] + 1
+                await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", (count, chat_id, user_id))
+            else:
+                count = 1
+                await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (chat_id, user_id, count))
+        await db.commit()
+        return count
+
+# ================= SETTINGS PANEL =================
+
+def settings_keyboard(limit, penalty, apply_to):
+    kb = InlineKeyboardBuilder()
+
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(1)
+
+    return kb.as_markup()
+
+
+def back_to_settings_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="↩︎ Back to Settings", callback_data="back_to_main_settings")
+    return kb.as_markup()
+
+@dp.message(Command("settings"))
+async def open_settings(message: types.Message):
+    if message.chat.type == "private":
+        # If settings command is sent in private, show the settings directly
+        limit, penalty, apply_to = await get_settings(message.chat.id)
+        await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=settings_keyboard(limit, penalty, apply_to))
+        return
+
+    if not await is_owner(message.chat.id, message.from_user.id):
+        return await message.reply("❌ Only group owner can access settings.")
+    
+    # In group chat, send a message with buttons to open settings
+    kb = InlineKeyboardBuilder()
+    kb.button(text="☛ Open Here", callback_data="open_settings_here")
+    kb.button(text="☛ Open Privately", callback_data="open_settings_privately")
+    kb.adjust(2)
+    
+    await message.reply(
+        "⚙ <b>Bio Guard Settings</b>\nSelect where to open settings:", 
+        reply_markup=kb.as_markup()
+    )
+
+# ================= CHANGE OPTIONS =================
+
+@dp.callback_query(lambda c: c.data == "open_settings_here")
+async def open_settings_here_callback(call: types.CallbackQuery):
+    # Check if the user is the group owner
+    if not await is_owner(call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Only group owner can access settings.", show_alert=True)
+        return
+    
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=settings_keyboard(limit, penalty, apply_to))
+
+@dp.callback_query(lambda c: c.data == "open_settings_privately")
+async def open_settings_privately_callback(call: types.CallbackQuery):
+    # Check if the user is the group owner
+    if not await is_owner(call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Only group owner can access settings.", show_alert=True)
+        return
+    
+    # Send settings to user privately
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    try:
+        await call.bot.send_message(
+            call.from_user.id,
+            "⚙ <b>Bio Guard Settings</b>",
+            reply_markup=settings_keyboard(limit, penalty, apply_to)
+        )
+        await call.answer("Settings sent to your private chat! Check your DMs.")
+        # Optionally delete the original message or update it
+        await call.message.delete()
+    except Exception as e:
+        await call.answer("Failed to send settings to your private chat. Please start a conversation with the bot first.", show_alert=True)
+
+
+@dp.callback_query(lambda c: c.data == "change_limit")
+async def change_limit(call: types.CallbackQuery):
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    kb = InlineKeyboardBuilder()
+    
+    # Add decrease/increase buttons
+    kb.button(text="− Decrease", callback_data="limit_decrease")
+    kb.button(text=f"Current: {limit}", callback_data="noop")
+    kb.button(text="✚ Increase", callback_data="limit_increase")
+    
+    # Add some common preset options
+    kb.button(text="Reset to 3", callback_data="limit_3")
+    kb.adjust(3, 1)  # 3 buttons in first row, 1 in second
+    
+    await call.message.edit_text("<b>Warning Limit Settings</b>\nCurrent limit: <code>{}</code>\n\nUse ✚/− buttons to adjust:".format(limit), reply_markup=kb.as_markup())
+
+@dp.callback_query(lambda c: c.data in ["limit_1", "limit_2", "limit_3", "limit_5"])
+async def set_limit(call: types.CallbackQuery):
+    # Handle preset limit values
+    limit = int(call.data.split("_")[1])
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET warn_limit=? WHERE chat_id=?", (limit, call.message.chat.id))
+        await db.commit()
+    await call.answer(f"Limit set to {limit}!")
+    # Refresh the settings menu to show updated limit
+    current_limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    kb = InlineKeyboardBuilder()
+    
+    kb.button(text="− Decrease", callback_data="limit_decrease")
+    kb.button(text=f"Current: {current_limit}", callback_data="noop")
+    kb.button(text="✚ Increase", callback_data="limit_increase")
+    
+    # Add some common preset options
+    kb.button(text="Reset to 3", callback_data="limit_3")
+    kb.button(text="↩︎ Back to Settings", callback_data="back_to_main_settings")
+    kb.adjust(3, 2)  # 3 buttons in first row, 2 in second
+    
+    await call.message.edit_text("<b>Warning Limit Settings</b>\nCurrent limit: <code>{}</code>\n\nUse ✚/− buttons to adjust:".format(current_limit), reply_markup=kb.as_markup())
+
+@dp.callback_query(lambda c: c.data == "limit_increase")
+async def increase_limit(call: types.CallbackQuery):
+    current_limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    new_limit = min(current_limit + 1, 10)  # Max limit of 10
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET warn_limit=? WHERE chat_id=?", (new_limit, call.message.chat.id))
+        await db.commit()
+    await call.answer(f"Limit increased to {new_limit}")
+    # Refresh the settings menu to show updated limit
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    kb = InlineKeyboardBuilder()
+    
+    kb.button(text="− Decrease", callback_data="limit_decrease")
+    kb.button(text=f"Current: {limit}", callback_data="noop")
+    kb.button(text="✚ Increase", callback_data="limit_increase")
+    
+    # Add some common preset options
+    kb.button(text="Reset to 3", callback_data="limit_3")
+    kb.button(text="↩︎ Back to Settings", callback_data="back_to_main_settings")
+    kb.adjust(3, 2)  # 3 buttons in first row, 2 in second
+    
+    await call.message.edit_text("<b>Warning Limit Settings</b>\nCurrent limit: <code>{}</code>\n\nUse ✚/− buttons to adjust:".format(limit), reply_markup=kb.as_markup())
+
+@dp.callback_query(lambda c: c.data == "limit_decrease")
+async def decrease_limit(call: types.CallbackQuery):
+    current_limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    new_limit = max(current_limit - 1, 1)  # Min limit of 1
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET warn_limit=? WHERE chat_id=?", (new_limit, call.message.chat.id))
+        await db.commit()
+    await call.answer(f"Limit decreased to {new_limit}")
+    # Refresh the settings menu to show updated limit
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    kb = InlineKeyboardBuilder()
+    
+    kb.button(text="− Decrease", callback_data="limit_decrease")
+    kb.button(text=f"Current: {limit}", callback_data="noop")
+    kb.button(text="✚ Increase", callback_data="limit_increase")
+    
+    # Add some common preset options
+    kb.button(text="Reset to 3", callback_data="limit_3")
+    kb.button(text="↩︎ Back to Settings", callback_data="back_to_main_settings")
+    kb.adjust(3, 2)  # 3 buttons in first row, 2 in second
+    
+    await call.message.edit_text("<b>Warning Limit Settings</b>\nCurrent limit: <code>{}</code>\n\nUse ✚/− buttons to adjust:".format(limit), reply_markup=kb.as_markup())
+
+# Action button handlers
+@dp.callback_query(lambda c: c.data.startswith("unmute_"))
+async def unmute_user(call: types.CallbackQuery):
+    # Check if the caller has admin rights
+    if not await is_admin(call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Only admins can unmute users!", show_alert=True)
+        return
+    
+    user_id = int(call.data.split("_")[1])
+    try:
+        # Unmute the user
+        await bot.restrict_chat_member(
+            chat_id=call.message.chat.id,
+            user_id=user_id,
+            permissions=types.ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_change_info=True,
+                can_invite_users=True,
+                can_pin_messages=True
+            )
+        )
+        await call.answer(f"✅ User {user_id} unmuted successfully!")
+        # Delete the action message
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+    except Exception as e:
+        await call.answer(f"Error unmuting user: {str(e)}", show_alert=True)
+
+@dp.callback_query(lambda c: c.data.startswith("unban_"))
+async def unban_user(call: types.CallbackQuery):
+    # Check if the caller has ban permissions
+    if not await can_ban_users(call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Only users with ban permissions can unban users!", show_alert=True)
+        return
+    
+    user_id = int(call.data.split("_")[1])
+    try:
+        # Unban the user
+        await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
+        await call.answer(f"🔓 User {user_id} unbanned successfully!")
+        # Delete the action message
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+    except Exception as e:
+        await call.answer(f"Error unbanning user: {str(e)}", show_alert=True)
+
+@dp.callback_query(lambda c: c.data.startswith("readd_"))
+async def readd_user(call: types.CallbackQuery):
+    # Check if the caller has admin rights (for kicking/re-adding)
+    if not await is_admin(call.message.chat.id, call.from_user.id):
+        await call.answer("❌ Only admins can re-add users!", show_alert=True)
+        return
+    
+    user_id = int(call.data.split("_")[1])
+    try:
+        # Invite the user back (send invite link or just unban if they were kicked)
+        await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
+        await call.answer(f"🔄 User {user_id} can be re-added to the group!")
+        # Delete the action message
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+    except Exception as e:
+        await call.answer(f"Error re-adding user: {str(e)}", show_alert=True)
+
+@dp.callback_query(lambda c: c.data == "noop")
+async def noop_handler(call: types.CallbackQuery):
+    # Do nothing, just acknowledge
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data == "back_to_main_settings")
+async def back_to_settings(call: types.CallbackQuery):
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=settings_keyboard(limit, penalty, apply_to))
+
+@dp.callback_query(lambda c: c.data == "save_and_close")
+async def save_and_close_settings(call: types.CallbackQuery):
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    await call.message.edit_text(
+        f"💾 <b>Settings Saved!</b>\n\n"
+        f"⚠ Warn Limit: {limit}\n"
+        f"🚨 Penalty: {penalty}\n"
+        f"👥 Apply To: {apply_to}\n\n"
+        f"✅ All settings have been saved successfully!",
+        reply_markup=None  # Remove keyboard
+    )
+    await call.answer("Settings saved and closed!")
+
+@dp.callback_query(lambda c: c.data == "change_penalty")
+async def change_penalty(call: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Mute", callback_data="penalty_mute")],
+        [InlineKeyboardButton(text="Kick", callback_data="penalty_kick")],
+        [InlineKeyboardButton(text="Ban", callback_data="penalty_ban")],
+        [InlineKeyboardButton(text="↩︎ Back to Settings", callback_data="back_to_main_settings")]
+    ])
+    await call.message.edit_text("Select Penalty:", reply_markup=kb)
+
+@dp.callback_query(lambda c: c.data.startswith("penalty_"))
+async def set_penalty(call: types.CallbackQuery):
+    penalty = call.data.split("_")[1]
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET penalty=? WHERE chat_id=?", (penalty, call.message.chat.id))
+        await db.commit()
+    await call.answer("Updated!")
+    # Show confirmation with back button
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="↩︎ Back to Settings", callback_data="back_to_main_settings")
+    await call.message.edit_text(f"✅ Penalty updated to <b>{penalty.title()}</b>\n\nCurrent settings:\n⚠ Warn Limit: {limit}\n🚨 Penalty: {penalty}\n👥 Apply To: {apply_to}", reply_markup=kb.as_markup())
+
+@dp.callback_query(lambda c: c.data == "change_apply")
+async def change_apply(call: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👥 Members Only", callback_data="apply_members")],
+        [InlineKeyboardButton(text="👑 Admins Only", callback_data="apply_admins")],
+        [InlineKeyboardButton(text="🌐 Everyone", callback_data="apply_everyone")],
+        [InlineKeyboardButton(text="👤 Members & Admins", callback_data="apply_members_admins")],
+        [InlineKeyboardButton(text="↩︎ Back to Settings", callback_data="back_to_main_settings")]
+    ])
+    await call.message.edit_text("Apply Rule To:", reply_markup=kb)
+
+@dp.callback_query(lambda c: c.data.startswith("apply_"))
+async def set_apply(call: types.CallbackQuery):
+    apply_to = call.data.split("_")[1]
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET apply_to=? WHERE chat_id=?", (apply_to, call.message.chat.id))
+        await db.commit()
+    await call.answer("Updated!")
+    # Show confirmation with back button
+    limit, penalty, apply_to = await get_settings(call.message.chat.id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="↩︎ Back to Settings", callback_data="back_to_main_settings")
+    await call.message.edit_text(f"✅ Apply To updated to <b>{apply_to.title()}</b>\n\nCurrent settings:\n⚠ Warn Limit: {limit}\n🚨 Penalty: {penalty}\n👥 Apply To: {apply_to}", reply_markup=kb.as_markup())
+
+# ================= BIO CHECK =================
+
+async def check_bio(message: types.Message):
+    if message.chat.type not in ["group", "supergroup"]:
+        return
+
+    user = await bot.get_chat(message.from_user.id)
+    bio = user.bio or ""
+
+    if not bio_pattern.search(bio):
+        return
+
+    limit, penalty, apply_to = await get_settings(message.chat.id)
+
+    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+
+    if apply_to == "members" and member.status != ChatMemberStatus.MEMBER:
+        return
+    if apply_to == "admins" and member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+        return
+    if apply_to == "members_admins" and member.status not in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+        return  # Apply to members, admins, and creators, but not banned/left users
+
+    count = await add_warn(message.chat.id, message.from_user.id)
+
+    warning_msg = await message.reply(
+        f"⚠ Warning {count}/{limit} | ID: <code>{message.from_user.id}</code>\n"
+        f"Reason: Bio contains link."
+    )
+    
+    # Auto-delete warning message after 1 minute
+    import asyncio
+    async def delete_warning():
+        await asyncio.sleep(60)  # Wait 1 minute
+        try:
+            await warning_msg.delete()
+        except Exception:
+            pass  # Message may have been deleted already
+    
+    asyncio.create_task(delete_warning())
+
+    if count >= limit:
+        # Check if the bot has permissions to perform the action
+        bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+        kb = InlineKeyboardBuilder()
+        action_taken = False
+        
+        if penalty == "mute":
+            if bot_member.can_restrict_members:
+                await bot.restrict_chat_member(message.chat.id, message.from_user.id, permissions=types.ChatPermissions(can_send_messages=False))
+                kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
+                action_taken = True
+        elif penalty == "kick":
+            if bot_member.can_restrict_members:
+                await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                await bot.unban_chat_member(message.chat.id, message.from_user.id)
+                kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
+                action_taken = True
+        elif penalty == "ban":
+            if bot_member.can_restrict_members:
+                await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
+                action_taken = True
+        
+        # Send action message with appropriate button if action was taken
+        if action_taken:
+            action_msg = await message.reply(
+                f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} warnings.",
+                reply_markup=kb.as_markup()
+            )
+        else:
+            # If bot doesn't have permissions, notify the admins
+            action_msg = await message.reply(
+                f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}.",
+            )
+        
+        # Auto-delete action message after 1 minute
+        async def delete_action():
+            await asyncio.sleep(60)  # Wait 1 minute
+            try:
+                await action_msg.delete()
+            except Exception:
+                pass  # Message may have been deleted already
+        
+        asyncio.create_task(delete_action())
+
+# Function to check for links in messages and delete them
+async def check_message_for_links(message: types.Message):
+    if message.chat.type not in ["group", "supergroup"]:
+        return
+
+    # Check if message contains text and if it contains a link
+    message_text = ""
+    if message.text:
+        message_text = message.text
+    elif message.caption:  # For media messages with captions
+        message_text = message.caption
+    
+    if not message_text:
+        return
+
+    # Check if the message contains a link
+    if link_pattern.search(message_text):
+        # Get settings for the chat
+        limit, penalty, apply_to = await get_settings(message.chat.id)
+        
+        # Check if this applies to the user based on apply_to setting
+        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        
+        if apply_to == "members" and member.status != ChatMemberStatus.MEMBER:
+            return
+        if apply_to == "admins" and member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+            return
+        if apply_to == "members_admins" and member.status not in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+            return  # Apply to members, admins, and creators, but not banned/left users
+
+        # Delete the message containing the link
+        try:
+            await message.delete()
+        except Exception as e:
+            print(f"Could not delete message: {e}")
+
+        # Add a warning to the user
+        count = await add_warn(message.chat.id, message.from_user.id)
+
+        # Send a warning message
+        warning_msg = await message.answer(
+            f"⚠️ <b>Link Removed!</b> User {message.from_user.full_name} (ID: <code>{message.from_user.id}</code>)\n"
+            f"Your message was deleted because it contained a link.\n"
+            f"This is warning {count}/{limit}."
+        )
+        
+        # Auto-delete warning message after 30 seconds
+        async def delete_warning():
+            await asyncio.sleep(30)  # Wait 30 seconds
+            try:
+                await warning_msg.delete()
+            except Exception:
+                pass  # Message may have been deleted already
+        
+        asyncio.create_task(delete_warning())
+
+        # Check if user has reached the warning limit
+        if count >= limit:
+            # Check if the bot has permissions to perform the action
+            bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+            kb = InlineKeyboardBuilder()
+            action_taken = False
+            
+            if penalty == "mute":
+                if bot_member.can_restrict_members:
+                    await bot.restrict_chat_member(message.chat.id, message.from_user.id, permissions=types.ChatPermissions(can_send_messages=False))
+                    kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
+                    action_taken = True
+            elif penalty == "kick":
+                if bot_member.can_restrict_members:
+                    await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                    await bot.unban_chat_member(message.chat.id, message.from_user.id)
+                    kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
+                    action_taken = True
+            elif penalty == "ban":
+                if bot_member.can_restrict_members:
+                    await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                    kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
+                    action_taken = True
+            
+            # Send action message with appropriate button if action was taken
+            if action_taken:
+                action_msg = await message.answer(
+                    f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after reaching {limit} warnings for posting links.",
+                    reply_markup=kb.as_markup()
+                )
+            else:
+                # If bot doesn't have permissions, notify the admins
+                action_msg = await message.answer(
+                    f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}.",
+                )
+            
+            # Auto-delete action message after 1 minute
+            async def delete_action():
+                await asyncio.sleep(60)  # Wait 1 minute
+                try:
+                    await action_msg.delete()
+                except Exception:
+                    pass  # Message may have been deleted already
+            
+            asyncio.create_task(delete_action())
+
+# Trigger on every message
+@dp.message()
+async def monitor(message: types.Message):
+    await check_bio(message)
+    await check_message_for_links(message)
+
+# ================= RUN =================
+
+async def main():
+    await init_db()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
