@@ -2,7 +2,7 @@ import re
 import asyncio
 import aiosqlite
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
@@ -23,6 +23,9 @@ BOT_NAME = "Bio Guard Bot"
 
 # Owner username - only this user can access logs
 OWNER_USERNAME = "Jayden_212"
+
+# Store owner's chat ID for automatic notifications
+owner_chat_id = None
 
 # Database initialization
 async def init_db():
@@ -160,6 +163,10 @@ async def show_logs(message: types.Message):
         await message.reply("❌ Access denied! Only @Jayden_212 can view logs.")
         return
     
+    # Store owner's chat ID for auto notifications
+    global owner_chat_id
+    owner_chat_id = message.chat.id
+    
     # Parse command arguments for filtering
     args = message.text.split()[1:] if len(message.text.split()) > 1 else []
     
@@ -208,6 +215,87 @@ async def show_logs(message: types.Message):
         # Split long messages
         for i in range(0, len(log_text), 4000):
             await message.answer(log_text[i:i+4000])
+
+# Auto logs command - Enable/disable hourly automatic logs
+@dp.message(Command("autologs"))
+async def auto_logs_command(message: types.Message):
+    # Check if user is owner
+    if message.from_user.username != OWNER_USERNAME:
+        await message.reply("❌ Access denied! Only @Jayden_212 can use this command.")
+        return
+    
+    global owner_chat_id
+    owner_chat_id = message.chat.id
+    
+    args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+    
+    if args and args[0].lower() == "off":
+        await message.reply("⏸️ Automatic hourly logs disabled.")
+    else:
+        await message.reply("▶️ Automatic hourly logs enabled. You'll receive updates every hour.")
+
+# Send hourly automatic log report
+async def send_hourly_logs():
+    """Send automatic hourly log summary to owner"""
+    global owner_chat_id
+    
+    if not owner_chat_id:
+        return  # Owner chat ID not set yet
+    
+    try:
+        # Get last hour's logs
+        one_hour_ago = (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        async with aiosqlite.connect("bio_guard.db") as db:
+            async with db.execute("""
+                SELECT timestamp, event_type, username, chat_name, details 
+                FROM activity_log 
+                WHERE timestamp >= ? 
+                ORDER BY id DESC
+            """, (one_hour_ago,)) as cur:
+                rows = await cur.fetchall()
+            
+            if not rows:
+                # No activity in the last hour
+                await bot.send_message(
+                    owner_chat_id,
+                    "⏰ <b>Hourly Activity Report</b>\n\n"
+                    "📭 No activity in the last hour.\n"
+                    f"⏰ Report time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                return
+            
+            # Count by type
+            stats = {}
+            for row in rows:
+                event_type = row[1]
+                stats[event_type] = stats.get(event_type, 0) + 1
+            
+            # Format summary
+            log_text = f"⏰ <b>Hourly Activity Report</b>\n"
+            log_text += f"📊 Summary of the last hour:\n\n"
+            
+            # Statistics
+            for event_type, count in sorted(stats.items(), key=lambda x: x[1], reverse=True):
+                emoji = {"join": "➕", "leave": "➖", "warn": "⚠️", "ban": "🚫", 
+                        "mute": "🔇", "kick": "👢", "unban": "✅", "unmute": "🔊"}.get(event_type, "📝")
+                log_text += f"{emoji} <b>{event_type.capitalize()}</b>: {count}\n"
+            
+            log_text += f"\n📈 Total events: {len(rows)}\n"
+            log_text += f"⏰ Report time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            
+            # Recent activity (last 10)
+            log_text += "<b>Recent Activity:</b>\n"
+            for row in reversed(rows[-10:]):
+                timestamp, event_type, username, chat_name, details = row
+                emoji = {"join": "➕", "leave": "➖", "warn": "⚠️", "ban": "🚫", 
+                        "mute": "🔇", "kick": "👢", "unban": "✅", "unmute": "🔊"}.get(event_type, "📝")
+                log_text += f"{emoji} {event_type}: @{username or 'Unknown'} in {chat_name or 'Private'}\n"
+            
+            await bot.send_message(owner_chat_id, log_text)
+    
+    except Exception as e:
+        print(f"Error sending hourly logs: {e}")
 
 # Helper function to log activities
 async def log_activity(event_type, user_id, username, chat_id=None, chat_name=None, details=""):
@@ -686,6 +774,16 @@ async def readd_user(call: types.CallbackQuery):
 # Main function
 async def main():
     await init_db()
+    
+    # Start hourly log scheduler
+    async def hourly_logs_scheduler():
+        while True:
+            await asyncio.sleep(3600)  # Wait 1 hour (3600 seconds)
+            await send_hourly_logs()
+    
+    # Start scheduler task
+    asyncio.create_task(hourly_logs_scheduler())
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
