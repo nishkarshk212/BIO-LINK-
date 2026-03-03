@@ -2,6 +2,7 @@ import re
 import asyncio
 import aiosqlite
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
@@ -20,6 +21,9 @@ dp = Dispatcher()
 # Get bot name
 BOT_NAME = "Bio Guard Bot"
 
+# Owner username - only this user can access logs
+OWNER_USERNAME = "Jayden_212"
+
 # Database initialization
 async def init_db():
     async with aiosqlite.connect("bio_guard.db") as db:
@@ -37,6 +41,19 @@ async def init_db():
             user_id INTEGER,
             count INTEGER,
             PRIMARY KEY (chat_id, user_id)
+        )
+        """)
+        # Activity log table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            event_type TEXT,
+            user_id INTEGER,
+            username TEXT,
+            chat_id INTEGER,
+            chat_name TEXT,
+            details TEXT
         )
         """)
         await db.commit()
@@ -135,6 +152,81 @@ async def open_settings(message: types.Message):
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
+# Logs command - Owner only (@Jayden_212)
+@dp.message(Command("logs"))
+async def show_logs(message: types.Message):
+    # Check if user is owner
+    if message.from_user.username != OWNER_USERNAME:
+        await message.reply("❌ Access denied! Only @Jayden_212 can view logs.")
+        return
+    
+    # Parse command arguments for filtering
+    args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+    
+    event_filter = None
+    limit = 20  # Default limit
+    
+    for arg in args:
+        if arg.startswith("--type="):
+            event_filter = arg.split("=")[1]
+        elif arg.isdigit():
+            limit = min(int(arg), 100)  # Max 100
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        if event_filter:
+            async with db.execute(
+                "SELECT timestamp, event_type, username, chat_name, details FROM activity_log WHERE event_type=? ORDER BY id DESC LIMIT ?",
+                (event_filter, limit)
+            ) as cur:
+                rows = await cur.fetchall()
+        else:
+            async with db.execute(
+                "SELECT timestamp, event_type, username, chat_name, details FROM activity_log ORDER BY id DESC LIMIT ?",
+                (limit,)
+            ) as cur:
+                rows = await cur.fetchall()
+        
+        if not rows:
+            await message.reply(f"📊 No logs found{' for type: ' + event_filter if event_filter else ''}.")
+            return
+        
+        # Format logs
+        log_text = f"📋 <b>Bio Guard Bot Activity Log</b>\n"
+        log_text += f"<i>Last {len(rows)} events:</i>\n\n"
+        
+        for row in reversed(rows):
+            timestamp, event_type, username, chat_name, details = row
+            emoji = {"join": "➕", "leave": "➖", "warn": "⚠️", "ban": "🚫", 
+                    "mute": "🔇", "kick": "👢", "unban": "✅", "unmute": "🔊"}.get(event_type, "📝")
+            
+            log_text += f"{emoji} <b>{event_type.upper()}</b>\n"
+            log_text += f"   👤 User: @{username or 'Unknown'}\n"
+            log_text += f"   💬 Chat: {chat_name or 'Private'}\n"
+            log_text += f"   📝 {details}\n"
+            log_text += f"   ⏰ {timestamp}\n\n"
+        
+        # Split long messages
+        for i in range(0, len(log_text), 4000):
+            await message.answer(log_text[i:i+4000])
+
+# Helper function to log activities
+async def log_activity(event_type, user_id, username, chat_id=None, chat_name=None, details=""):
+    """Log bot activities"""
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("""
+            INSERT INTO activity_log (timestamp, event_type, user_id, username, chat_id, chat_name, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            event_type,
+            user_id,
+            username,
+            chat_id,
+            chat_name,
+            details
+        ))
+        await db.commit()
+
 # Bio checking logic - Improved detection
 bio_pattern = re.compile(r"(https?://|t\.me/|@\w+|telegram\.me/|t\.me/joinchat/|t\.me/\+|telegram\.dog/)", re.IGNORECASE)
 
@@ -215,6 +307,16 @@ async def check_bio(message: types.Message):
         f"Reason: Bio contains link."
     )
     
+    # Log the warning
+    await log_activity(
+        event_type="warn",
+        user_id=message.from_user.id,
+        username=message.from_user.username or "Unknown",
+        chat_id=message.chat.id,
+        chat_name=message.chat.title,
+        details=f"Warning {count}/{limit} - Bio contains link"
+    )
+    
     # Auto-delete warning after 30 seconds (shorter time for better UX)
     async def delete_warning():
         await asyncio.sleep(30)
@@ -286,10 +388,41 @@ async def check_bio(message: types.Message):
         
         asyncio.create_task(delete_action())
 
-# Monitor all messages
+# Monitor all messages and bio changes
 @dp.message()
 async def monitor(message: types.Message):
     await check_bio(message)
+
+# Monitor chat member updates (join/leave)
+@dp.chat_member()
+async def on_chat_member_update(message: types.ChatMemberUpdated):
+    """Track when users join or leave groups"""
+    old_member = message.old_chat_member
+    new_member = message.new_chat_member
+    
+    # User joined
+    if old_member.status == ChatMemberStatus.LEFT and new_member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+        username = new_member.user.username or "Unknown"
+        await log_activity(
+            event_type="join",
+            user_id=new_member.user.id,
+            username=username,
+            chat_id=message.chat.id,
+            chat_name=message.chat.title,
+            details=f"Joined as {new_member.status}"
+        )
+    
+    # User left
+    elif new_member.status == ChatMemberStatus.LEFT:
+        username = old_member.user.username or "Unknown"
+        await log_activity(
+            event_type="leave",
+            user_id=old_member.user.id,
+            username=username,
+            chat_id=message.chat.id,
+            chat_name=message.chat.title,
+            details=f"Left group (was {old_member.status})"
+        )
 
 # Callback handlers for settings
 @dp.callback_query(lambda c: c.data == "change_limit")
