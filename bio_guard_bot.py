@@ -518,15 +518,26 @@ async def on_chat_member_update(message: types.ChatMemberUpdated):
 @dp.callback_query(lambda c: c.data == "open_settings_menu")
 async def open_settings_menu_callback(call: types.CallbackQuery):
     await call.answer("Opening settings...")
-    # Send the /settings command as a message
-    settings_msg = types.Message(
-        message_id=call.message.message_id,
-        date=call.message.date,
-        chat=call.message.chat,
-        from_user=call.from_user,
-        text="/settings"
-    )
-    await open_settings(settings_msg)
+    
+    # Get current settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to) VALUES (?, ?, ?, ?)", 
+                               (call.message.chat.id, 3, "mute", "members"))
+                await db.commit()
+                row = (3, "mute", "members")
+    
+    limit, penalty, apply_to = row
+    kb = InlineKeyboardBuilder()
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="✔︎ Close", callback_data="save_and_close")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
 # Callback handlers for settings
 @dp.callback_query(lambda c: c.data == "change_limit")
