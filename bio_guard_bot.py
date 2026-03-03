@@ -171,18 +171,32 @@ async def check_bio(message: types.Message):
                 limit, penalty, apply_to = row
 
         # Check if user should be affected based on settings
-        if apply_to == "members" and message.from_user.id == (await bot.get_me()).id:
-            return  # Don't apply to bot itself
+        chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        user_status = chat_member.status
+        
+        # Apply filtering based on settings
+        should_apply = False
+        
+        if apply_to == "members":
+            # Only apply to regular members (not admins/creators)
+            if user_status in ["member", "left"]:
+                should_apply = True
         elif apply_to == "admins":
-            chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-            if chat_member.status not in ["administrator", "creator"]:
-                return  # Not an admin
+            # Only apply to administrators and creators
+            if user_status in ["administrator", "creator"]:
+                should_apply = True
         elif apply_to == "members_and_admins":
-            # Apply to both members and admins
-            pass
+            # Apply to both members and admins (everyone except left members)
+            if user_status in ["member", "administrator", "creator"]:
+                should_apply = True
         elif apply_to == "everyone":
-            # Apply to everyone including bot
-            pass
+            # Apply to everyone including bots and all statuses
+            should_apply = True
+        
+        # Exit if this setting doesn't apply to this user
+        if not should_apply:
+            print(f"Bio detection skipped for user {message.from_user.id} (status: {user_status}, apply_to: {apply_to})")
+            return
 
         # Add warning
         async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
