@@ -97,6 +97,8 @@ async def start_command(message: types.Message):
         kb.button(text="✚ Add To Group", url="https://t.me/your_bot_username?startgroup=true")
     
     kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
+    kb.button(text="⚙ Settings", callback_data="open_settings_menu")
+    kb.button(text="☂ Updates", url="https://t.me/Tele_212_bots")
     kb.adjust(2)
     
     await message.answer(
@@ -511,6 +513,20 @@ async def on_chat_member_update(message: types.ChatMemberUpdated):
             chat_name=message.chat.title,
             details=f"Left group (was {old_member.status})"
         )
+
+# Callback handler for Settings button
+@dp.callback_query(lambda c: c.data == "open_settings_menu")
+async def open_settings_menu_callback(call: types.CallbackQuery):
+    await call.answer("Opening settings...")
+    # Send the /settings command as a message
+    settings_msg = types.Message(
+        message_id=call.message.message_id,
+        date=call.message.date,
+        chat=call.message.chat,
+        from_user=call.from_user,
+        text="/settings"
+    )
+    await open_settings(settings_msg)
 
 # Callback handlers for settings
 @dp.callback_query(lambda c: c.data == "change_limit")
