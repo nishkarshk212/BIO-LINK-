@@ -1136,6 +1136,17 @@ async def open_here_group_callback(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("unmute_"))
 async def unmute_user(call: types.CallbackQuery):
+    # Check if user is admin or owner
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can unmute users!", show_alert=True)
+        return
+    
+    # Check if admin has permission
+    if chat_member.status == "administrator" and not chat_member.can_restrict_members:
+        await call.answer("❌ You don't have permission to unmute users!", show_alert=True)
+        return
+    
     user_id = int(call.data.split("_")[1])
     try:
         await bot.restrict_chat_member(
@@ -1159,6 +1170,17 @@ async def unmute_user(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("unban_"))
 async def unban_user(call: types.CallbackQuery):
+    # Check if user is admin or owner
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can unban users!", show_alert=True)
+        return
+    
+    # Check if admin has permission
+    if chat_member.status == "administrator" and not chat_member.can_restrict_members:
+        await call.answer("❌ You don't have permission to unban users!", show_alert=True)
+        return
+    
     user_id = int(call.data.split("_")[1])
     try:
         await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
@@ -1169,6 +1191,17 @@ async def unban_user(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("readd_"))
 async def readd_user(call: types.CallbackQuery):
+    # Check if user is admin or owner
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can re-add users!", show_alert=True)
+        return
+    
+    # Check if admin has permission
+    if chat_member.status == "administrator" and not chat_member.can_restrict_members:
+        await call.answer("❌ You don't have permission to re-add users!", show_alert=True)
+        return
+    
     user_id = int(call.data.split("_")[1])
     try:
         await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
