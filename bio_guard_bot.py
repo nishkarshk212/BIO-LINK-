@@ -53,6 +53,13 @@ async def init_db():
             print("✅ Added 'edit_apply_to' column to settings table.")
         except Exception:
             pass # Already exists
+        
+        # Add edit_penalty column if it doesn't exist
+        try:
+            await db.execute("ALTER TABLE settings ADD COLUMN edit_penalty TEXT DEFAULT 'mute'")
+            print("✅ Added 'edit_penalty' column to settings table.")
+        except Exception:
+            pass # Already exists
         await db.execute("""
         CREATE TABLE IF NOT EXISTS warns (
             chat_id INTEGER,
@@ -647,14 +654,17 @@ async def monitor_edited_message(message: types.Message):
     if message.from_user.username == OWNER_USERNAME:
         return
     
-    # Get settings
+    # Get settings - use ONLY edit checker settings, not bio settings
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, edit_checker, edit_apply_to, edit_penalty FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                limit, penalty, edit_checker, edit_apply_to = 3, "mute", 1, "members"
+                limit, penalty, edit_checker, edit_apply_to, edit_penalty = 3, "mute", 1, "members", "mute"
             else:
-                limit, penalty, edit_checker, edit_apply_to = row
+                limit, penalty, edit_checker, edit_apply_to, edit_penalty = row
+    
+    # Use edit_penalty for edit checker, fallback to regular penalty if not set
+    effective_penalty = edit_penalty if edit_penalty else penalty
     
     # Check if edit checker is enabled
     if edit_checker == 0:
@@ -753,19 +763,19 @@ async def monitor_edited_message(message: types.Message):
         penalty_kb = InlineKeyboardBuilder()
         penalty_kb.adjust(1)
         
-        if penalty == "mute" and bot_member.can_restrict_members:
+        if effective_penalty == "mute" and bot_member.can_restrict_members:
             await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
                                          permissions=types.ChatPermissions(can_send_messages=False))
             penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
             await message.answer(f"⚠️ User {message.from_user.id} muted! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
-        elif penalty == "kick" and bot_member.can_restrict_members:
+        elif effective_penalty == "kick" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             await bot.unban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
             await message.answer(f"⚠️ User {message.from_user.id} kicked! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
-        elif penalty == "ban" and bot_member.can_restrict_members:
+        elif effective_penalty == "ban" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
             await message.answer(f"⚠️ User {message.from_user.id} banned! Reached warning limit ({count}/{limit}).", 
