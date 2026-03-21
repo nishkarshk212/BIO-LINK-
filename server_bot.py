@@ -2,6 +2,7 @@ import re
 import asyncio
 import aiosqlite
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
@@ -19,6 +20,9 @@ dp = Dispatcher()
 
 # Get bot name
 BOT_NAME = "[ 🇵؜ᴀɴᴅᴀ 🆇 🇸؜ᴇᴄᴜʀɪᴛʏ ]"
+
+# Owner username
+OWNER_USERNAME = "Jayden_212"
 
 # Database initialization
 async def init_db():
@@ -54,6 +58,15 @@ async def init_db():
             PRIMARY KEY (chat_id, user_id)
         )
         """)
+        # Global bans table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS global_bans (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            reason TEXT,
+            timestamp TEXT
+        )
+        """)
         await db.commit()
 
 # Start command
@@ -83,6 +96,68 @@ async def start_command(message: types.Message):
         f"➻ ᴊᴏɪɴ sᴜᴘᴘᴏʀᴛ ғᴏʀ ᴍᴏʀᴇ ᴜᴘᴅᴀᴛᴇs.🥂",
         reply_markup=kb.as_markup()
     )
+
+# Global ban command - Owner only
+@dp.message(Command("gban"))
+async def gban_user(message: types.Message):
+    if message.from_user.username != OWNER_USERNAME:
+        await message.reply("❌ Access denied! Only owner can use global ban.")
+        return
+    
+    args = message.text.split()
+    user_id = None
+    reason = "No reason provided"
+    
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+        username = message.reply_to_message.from_user.username
+        if len(args) > 1:
+            reason = " ".join(args[1:])
+    elif len(args) > 1:
+        if args[1].isdigit():
+            user_id = int(args[1])
+            username = "Unknown"
+            if len(args) > 2:
+                reason = " ".join(args[2:])
+        else:
+            await message.reply("❌ Please provide a valid user ID or reply to a message.")
+            return
+    else:
+        await message.reply("❌ Please reply to a user or provide their ID: /gban [user_id] [reason]")
+        return
+
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO global_bans (user_id, username, reason, timestamp) VALUES (?, ?, ?, ?)",
+            (user_id, username, reason, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        await db.commit()
+    
+    await message.reply(f"🚫 <b>Globally Banned</b>\n👤 User: {user_id}\n📝 Reason: {reason}")
+
+# Global unban command - Owner only
+@dp.message(Command("ungban"))
+async def ungban_user(message: types.Message):
+    if message.from_user.username != OWNER_USERNAME:
+        await message.reply("❌ Access denied! Only owner can use global unban.")
+        return
+    
+    args = message.text.split()
+    user_id = None
+    
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+    elif len(args) > 1 and args[1].isdigit():
+        user_id = int(args[1])
+    else:
+        await message.reply("❌ Please reply to a user or provide their ID: /ungban [user_id]")
+        return
+
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("DELETE FROM global_bans WHERE user_id = ?", (user_id,))
+        await db.commit()
+    
+    await message.reply(f"✅ <b>Globally Unbanned</b>\n👤 User: {user_id}")
 
 # Settings command
 @dp.message(Command("settings"))
@@ -206,9 +281,30 @@ async def check_bio(message: types.Message):
         
         asyncio.create_task(delete_action())
 
+# Global ban check logic
+async def check_global_ban(message: types.Message):
+    if message.chat.type not in ["group", "supergroup"]:
+        return False
+
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT reason FROM global_bans WHERE user_id = ?", (message.from_user.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                reason = row[0]
+                try:
+                    # Ban the user from the current group
+                    await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                    await message.reply(f"🚫 <b>ɢʟᴏʙᴀʟ ʙᴀɴ ᴅᴇᴛᴇᴄᴛᴇᴅ</b>\n\n👤 ᴜsᴇʀ: {message.from_user.id}\n📝 ʀᴇᴀsᴏɴ: {reason}\n\n<i>ᴛʜɪs ᴜsᴇʀ ʜᴀs ʙᴇᴇɴ ʙᴀɴɴᴇᴅ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>")
+                    return True
+                except Exception as e:
+                    print(f"Error auto-banning globally banned user: {e}")
+    return False
+
 # Monitor all messages
 @dp.message()
 async def monitor(message: types.Message):
+    if await check_global_ban(message):
+        return
     await check_bio(message)
 
 # Helper function to refresh settings menu
