@@ -525,6 +525,103 @@ async def check_bio(message: types.Message):
 async def monitor(message: types.Message):
     await check_bio(message)
 
+# Monitor edited messages
+@dp.edited_message()
+async def monitor_edited_message(message: types.Message):
+    """Detect when users edit their messages and warn them"""
+    if message.chat.type not in ["group", "supergroup"]:
+        return
+    
+    # Skip owner editing (can bypass if needed)
+    if message.from_user.username == OWNER_USERNAME:
+        return
+    
+    # Delete the edited message
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"Error deleting edited message: {e}")
+        return
+    
+    # Get settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                limit, penalty = 3, "mute"
+            else:
+                limit, penalty = row
+    
+    # Update warning count
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", 
+                            (message.chat.id, message.from_user.id)) as cur:
+            row = await cur.fetchone()
+            if row:
+                count = row[0] + 1
+                await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", 
+                               (count, message.chat.id, message.from_user.id))
+            else:
+                count = 1
+                await db.execute("INSERT INTO warns VALUES (?, ?, ?)", 
+                               (message.chat.id, message.from_user.id, count))
+        await db.commit()
+    
+    # Send warning message with buttons
+    kb = InlineKeyboardBuilder()
+    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}")
+    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}")
+    kb.adjust(2)
+    
+    warning_msg = await message.answer(
+        f"📢 ᴇᴅɪᴛᴛɪɴɢ ᴏꜰ ᴍᴇꜱꜱᴀɢᴇ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ ⚠️",
+        reply_markup=kb.as_markup()
+    )
+    
+    # Log the warning
+    await log_activity(
+        event_type="warn",
+        user_id=message.from_user.id,
+        username=message.from_user.username or "Unknown",
+        chat_id=message.chat.id,
+        chat_name=message.chat.title,
+        details=f"Warning {count}/{limit} - Edited message"
+    )
+    
+    # Auto-delete warning after 30 seconds
+    async def delete_warning():
+        await asyncio.sleep(30)
+        try:
+            await warning_msg.delete()
+        except:
+            pass
+    
+    asyncio.create_task(delete_warning())
+    
+    # Apply penalty if limit reached
+    if count >= limit:
+        bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+        penalty_kb = InlineKeyboardBuilder()
+        penalty_kb.adjust(1)
+        
+        if penalty == "mute" and bot_member.can_restrict_members:
+            await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
+                                         permissions=types.ChatPermissions(can_send_messages=False))
+            penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
+            await message.answer(f"⚠️ {message.from_user.first_name} muted! Reached warning limit ({count}/{limit}).", 
+                               reply_markup=penalty_kb.as_markup())
+        elif penalty == "kick" and bot_member.can_restrict_members:
+            await bot.ban_chat_member(message.chat.id, message.from_user.id)
+            await bot.unban_chat_member(message.chat.id, message.from_user.id)
+            penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
+            await message.answer(f"⚠️ {message.from_user.first_name} kicked! Reached warning limit ({count}/{limit}).", 
+                               reply_markup=penalty_kb.as_markup())
+        elif penalty == "ban" and bot_member.can_restrict_members:
+            await bot.ban_chat_member(message.chat.id, message.from_user.id)
+            penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
+            await message.answer(f"⚠️ {message.from_user.first_name} banned! Reached warning limit ({count}/{limit}).", 
+                               reply_markup=penalty_kb.as_markup())
+
 # Monitor chat member updates (join/leave)
 @dp.chat_member()
 async def on_chat_member_update(message: types.ChatMemberUpdated):
