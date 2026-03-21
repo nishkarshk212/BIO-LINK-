@@ -90,9 +90,16 @@ async def start_command(message: types.Message):
         return
     
     kb = InlineKeyboardBuilder()
+    
     try:
         bot_username = (await bot.get_me()).username
+        
+        # Build buttons
         kb.button(text="✚ Add To Group", url=f"https://t.me/{bot_username}?startgroup=true")
+        kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
+        kb.button(text="⚙ Settings", callback_data="open_settings_menu")
+        kb.button(text="☂ Updates", url="https://t.me/Tele_212_bots")
+        kb.adjust(2)
         
         # Get bot's profile photo
         photos = await bot.get_user_profile_photos((await bot.get_me()).id)
@@ -126,7 +133,9 @@ async def start_command(message: types.Message):
                 reply_markup=kb.as_markup()
             )
     except Exception as e:
-        print(f"Error getting bot profile photo: {e}")
+        print(f"Error in start command: {e}")
+        # Fallback buttons
+        kb = InlineKeyboardBuilder()
         kb.button(text="✚ Add To Group", url="https://t.me/your_bot_username?startgroup=true")
         kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
         kb.button(text="⚙ Settings", callback_data="open_settings_menu")
@@ -144,25 +153,6 @@ async def start_command(message: types.Message):
             f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
             reply_markup=kb.as_markup()
         )
-        return
-    
-    kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
-    kb.button(text="⚙ Settings", callback_data="open_settings_menu")
-    kb.button(text="☂ Updates", url="https://t.me/Tele_212_bots")
-    kb.adjust(2)
-    
-    await message.answer(
-        f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
-        f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
-        f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
-        f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
-        f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
-        f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
-        f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
-        f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
-        f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
-        reply_markup=kb.as_markup()
-    )
 
 # Settings command - Owner only access
 @dp.message(Command("settings"))
