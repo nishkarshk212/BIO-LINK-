@@ -676,7 +676,14 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     kb.button(text="✔︎ Close", callback_data="save_and_close")
     kb.adjust(2)
     
-    await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+    # Delete the original message (works for both text and photo)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    
+    # Send new settings message
+    await call.message.answer("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
 # Callback handlers for settings
 @dp.callback_query(lambda c: c.data == "change_limit")
