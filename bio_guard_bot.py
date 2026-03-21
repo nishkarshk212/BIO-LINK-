@@ -539,8 +539,10 @@ async def monitor_edited_message(message: types.Message):
     # Delete the edited message
     try:
         await message.delete()
+        print(f"✅ Deleted edited message from user {message.from_user.id}")
     except Exception as e:
-        print(f"Error deleting edited message: {e}")
+        print(f"❌ Error deleting edited message: {e}")
+        # Bot needs admin rights with delete permission
         return
     
     # Get settings
@@ -573,10 +575,14 @@ async def monitor_edited_message(message: types.Message):
     kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}")
     kb.adjust(2)
     
-    warning_msg = await message.answer(
-        f"📢 ᴇᴅɪᴛᴛɪɴɢ ᴏꜰ ᴍᴇꜱꜱᴀɢᴇ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ ⚠️",
-        reply_markup=kb.as_markup()
-    )
+    try:
+        warning_msg = await message.answer(
+            f"📢 ᴇᴅɪᴛᴛɪɴɢ ᴏꜰ ᴍᴇꜱꜱᴀɢᴇ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ ⚠️",
+            reply_markup=kb.as_markup()
+        )
+        print(f"✅ Sent warning message for edited message")
+    except Exception as e:
+        print(f"❌ Error sending warning: {e}")
     
     # Log the warning
     await log_activity(
