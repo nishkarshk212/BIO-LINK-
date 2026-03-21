@@ -24,6 +24,10 @@ BOT_NAME = "[ 🇵؜ᴀɴᴅᴀ 🆇 🇸؜ᴇᴄᴜʀɪᴛʏ ]"
 # Owner username - only this user can access logs
 OWNER_USERNAME = "Jayden_212"
 
+# Log channel configuration
+LOG_CHANNEL_ID = -1003757375746  # @music_24345
+LOG_CHANNEL_USERNAME = "@music_24345"
+
 # Store owner's chat ID for automatic notifications
 owner_chat_id = None
 
@@ -347,6 +351,54 @@ async def show_logs(message: types.Message):
         for i in range(0, len(log_text), 4000):
             await message.answer(log_text[i:i+4000])
 
+# Send logs to channel command - Owner only
+@dp.message(Command("sendlogs"))
+async def send_logs_to_channel(message: types.Message):
+    # Check if user is owner
+    if message.from_user.username != OWNER_USERNAME:
+        await message.reply("❌ Access denied! Only @Jayden_212 can use this command.")
+        return
+    
+    args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+    limit = int(args[0]) if args and args[0].isdigit() else 50
+    limit = min(limit, 100)
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute(
+            "SELECT timestamp, event_type, username, chat_name, details FROM activity_log ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ) as cur:
+            rows = await cur.fetchall()
+        
+        if not rows:
+            await message.reply(f"📊 No logs found to send.")
+            return
+        
+        # Send each log entry to channel
+        sent_count = 0
+        for row in reversed(rows):
+            timestamp, event_type, username, chat_name, details = row
+            emoji = {
+                "join": "➕", "leave": "➖", "warn": "⚠️", "ban": "🚫", 
+                "mute": "🔇", "kick": "👢", "unban": "✅", "unmute": "🔊",
+                "gban": "🌍", "ungban": "🌍✅", "edit": "✏️"
+            }.get(event_type, "📝")
+            
+            log_text = f"{emoji} <b>{event_type.upper()}</b>\n"
+            log_text += f"👤 User: @{username or 'Unknown'} (ID: {row[3]})\n"
+            log_text += f"💬 Chat: {chat_name or 'Private'}\n"
+            log_text += f"📝 {details}\n"
+            log_text += f"⏰ {timestamp}"
+            
+            try:
+                await bot.send_message(LOG_CHANNEL_ID, log_text)
+                sent_count += 1
+                await asyncio.sleep(0.5)  # Avoid rate limiting
+            except Exception as e:
+                print(f"Failed to send log to channel: {e}")
+        
+        await message.reply(f"✅ Sent {sent_count} log entries to {LOG_CHANNEL_USERNAME}")
+
 # Auto logs command - Enable/disable hourly automatic logs
 @dp.message(Command("autologs"))
 async def auto_logs_command(message: types.Message):
@@ -430,7 +482,7 @@ async def send_hourly_logs():
 
 # Helper function to log activities
 async def log_activity(event_type, user_id, username, chat_id=None, chat_name=None, details=""):
-    """Log bot activities"""
+    """Log bot activities to database and log channel"""
     async with aiosqlite.connect("bio_guard.db") as db:
         await db.execute("""
             INSERT INTO activity_log (timestamp, event_type, user_id, username, chat_id, chat_name, details)
@@ -445,6 +497,41 @@ async def log_activity(event_type, user_id, username, chat_id=None, chat_name=No
             details
         ))
         await db.commit()
+    
+    # Also send to log channel if configured
+    try:
+        await send_to_log_channel(event_type, user_id, username, chat_id, chat_name, details)
+    except Exception as e:
+        print(f"Error sending to log channel: {e}")
+
+# Send activity to log channel
+async def send_to_log_channel(event_type, user_id, username, chat_id, chat_name, details):
+    """Send activity log to the log channel"""
+    try:
+        emoji = {
+            "join": "➕", 
+            "leave": "➖", 
+            "warn": "⚠️", 
+            "ban": "🚫", 
+            "mute": "🔇", 
+            "kick": "👢", 
+            "unban": "✅", 
+            "unmute": "🔊",
+            "gban": "🌍",
+            "ungban": "🌍✅",
+            "edit": "✏️"
+        }.get(event_type, "📝")
+        
+        log_text = f"{emoji} <b>{event_type.upper()}</b>\n"
+        log_text += f"👤 User: @{username or 'Unknown'} (ID: {user_id})\n"
+        if chat_id:
+            log_text += f"💬 Chat: {chat_name or 'Private'} (ID: {chat_id})\n"
+        log_text += f"📝 {details}\n"
+        log_text += f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        await bot.send_message(LOG_CHANNEL_ID, log_text)
+    except Exception as e:
+        print(f"Failed to send to log channel: {e}")
 
 # Bio checking logic - Improved detection
 bio_pattern = re.compile(r"(https?://|t\.me/|@\w+|telegram\.me/|t\.me/joinchat/|t\.me/\+|telegram\.dog/)", re.IGNORECASE)
@@ -746,6 +833,8 @@ async def monitor_edited_message(message: types.Message):
         chat_name=message.chat.title,
         details=f"Warning {count}/{limit} - Edited message"
     )
+    
+    print(f"✅ Edit checker logged: User {message.from_user.id} warned for editing")
     
     # Auto-delete warning after 30 seconds
     async def delete_warning():
