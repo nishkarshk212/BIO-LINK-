@@ -520,7 +520,9 @@ async def check_bio(message: types.Message):
     kb.adjust(2)
     
     warning_msg = await message.reply(
-        f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
+        f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
+        f"👤 ᴜsᴇʀ: {message.from_user.first_name}\n"
+        f"📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}",
         reply_markup=kb.as_markup()
     )
     
@@ -714,10 +716,13 @@ async def monitor_edited_message(message: types.Message):
     
     try:
         warning_msg = await message.answer(
-            f"📢 ᴇᴅɪᴛᴛɪɴɢ ᴏꜰ ᴍᴇꜱꜱᴀɢᴇ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ ɪɴ ᴛʜɪꜱ ɢʀᴏᴜᴘ ⚠️",
+            f"⚠️ <b>ᴇᴅɪᴛᴛɪɴɢ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ!</b>\n\n"
+            f"👤 ᴜsᴇʀ: {message.from_user.first_name}\n"
+            f"📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}\n\n"
+            f"<i>ᴘʟᴇᴀsᴇ ᴅᴏ ɴᴏᴛ ᴇᴅɪᴛ ᴍᴇssᴀɢᴇs ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.</i>",
             reply_markup=kb.as_markup()
         )
-        print(f"✅ Sent warning message for edited message")
+        print(f"✅ Sent warning message for edited message to {message.from_user.id}")
     except Exception as e:
         print(f"❌ Error sending warning: {e}")
     
