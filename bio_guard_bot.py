@@ -102,18 +102,15 @@ async def start_command(message: types.Message):
     kb.adjust(2)
     
     await message.answer(
-        f"🔗 <b>{BOT_NAME}</b>🔒\n"
-        f"👋 Hello! <b>{message.from_user.first_name}</b> I am an Automatic Bio Link Checker Bot.\n\n"
-        f"🚫 I Detect And Restrict Users With Links In Their Bio.\n\n"
-        f"🛡 Perfect For:\n"
-        f"• Secure Groups\n"
-        f"• Anti-Spam Control\n"
-        f"• Clean Communities\n\n"
-        f"⚡ How To Use:\n"
-        f"1️⃣ Add Me To Your Group\n"
-        f"2️⃣ Give Me Admin Permission\n"
-        f"3️⃣ Enjoy Automatic Protection🔥\n\n"
-        f"🔒 I Keep Your Group Safe From Link Spammers!",
+        f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
+        f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
+        f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
+        f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
+        f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
+        f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
+        f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
+        f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
+        f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
         reply_markup=kb.as_markup()
     )
 
