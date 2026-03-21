@@ -210,4 +210,3 @@ else
     echo "3. Contact your hosting provider to check server status"
     exit 1
 fi
-EOF
