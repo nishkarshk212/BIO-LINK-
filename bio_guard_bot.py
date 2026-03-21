@@ -579,7 +579,7 @@ async def check_bio(message: types.Message):
         
         if action_taken:
             action_msg = await message.reply(
-                f"🚨 <b>User @{message.from_user.username or 'NoUsername'}</b> has been {penalty}d after {limit} warnings.",
+                f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} warnings.",
                 reply_markup=kb.as_markup()
             )
             
@@ -594,7 +594,7 @@ async def check_bio(message: types.Message):
             asyncio.create_task(delete_penalty_success())
         else:
             action_msg = await message.reply(
-                f"🚨 <b>User @{message.from_user.username or 'NoUsername'}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
+                f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
             )
         
         async def delete_action():
@@ -754,18 +754,18 @@ async def monitor_edited_message(message: types.Message):
             await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
                                          permissions=types.ChatPermissions(can_send_messages=False))
             penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
-            await message.answer(f"⚠️ @{message.from_user.username or 'NoUsername'} muted! Reached warning limit ({count}/{limit}).", 
+            await message.answer(f"⚠️ User {message.from_user.id} muted! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
         elif penalty == "kick" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             await bot.unban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
-            await message.answer(f"⚠️ @{message.from_user.username or 'NoUsername'} kicked! Reached warning limit ({count}/{limit}).", 
+            await message.answer(f"⚠️ User {message.from_user.id} kicked! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
         elif penalty == "ban" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
-            await message.answer(f"⚠️ @{message.from_user.username or 'NoUsername'} banned! Reached warning limit ({count}/{limit}).", 
+            await message.answer(f"⚠️ User {message.from_user.id} banned! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
 
 # Monitor chat member updates (join/leave)
