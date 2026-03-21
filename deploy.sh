@@ -29,6 +29,7 @@ ssh -p $SERVER_PORT $SERVER_USER@$SERVER_IP "mkdir -p $REMOTE_DIR"
 # Step 2: Transfer files to server
 echo "📤 Transferring project files..."
 scp -P $SERVER_PORT "$PROJECT_DIR/bio_guard_bot.py" $SERVER_USER@$SERVER_IP:$REMOTE_DIR/
+scp -P $SERVER_PORT "$PROJECT_DIR/server_bot.py" $SERVER_USER@$SERVER_IP:$REMOTE_DIR/
 scp -P $SERVER_PORT "$PROJECT_DIR/requirements.txt" $SERVER_USER@$SERVER_IP:$REMOTE_DIR/
 scp -P $SERVER_PORT "$PROJECT_DIR/.env" $SERVER_USER@$SERVER_IP:$REMOTE_DIR/
 

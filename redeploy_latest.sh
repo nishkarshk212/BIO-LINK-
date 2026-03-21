@@ -11,18 +11,20 @@ echo "  - Fixed button layouts for better UX"
 echo "  - Consistent inline keyboard arrangements"
 
 # Check if files exist locally
-if [ ! -f "bio_guard_bot.py" ] || [ ! -f "requirements.txt" ] || [ ! -f ".env" ]; then
+if [ ! -f "bio_guard_bot.py" ] || [ ! -f "server_bot.py" ] || [ ! -f "requirements.txt" ] || [ ! -f ".env" ]; then
     echo "Error: Required files not found in current directory!"
-    echo "Files needed: bio_guard_bot.py, requirements.txt, .env"
+    echo "Files needed: bio_guard_bot.py, server_bot.py, requirements.txt, .env"
     exit 1
 fi
 
 echo "✓ Local files verified (latest version with all button fixes)"
 
 # Encode files as base64 to embed in the SSH command
-BIO_GUARD_BOT=$(base64 -w 0 bio_guard_bot.py)
-REQUIREMENTS=$(base64 -w 0 requirements.txt)
-ENV_FILE=$(base64 -w 0 .env)
+# Note: macOS base64 arguments differ from GNU base64
+BIO_GUARD_BOT=$(base64 -i bio_guard_bot.py)
+SERVER_BOT=$(base64 -i server_bot.py)
+REQUIREMENTS=$(base64 -i requirements.txt)
+ENV_FILE=$(base64 -i .env)
 
 echo "✓ Files encoded as base64"
 
@@ -55,6 +57,7 @@ echo "Created project directory /opt/bio_guard_bot"
 
 # Decode and write the files directly
 echo '$BIO_GUARD_BOT' | base64 -d > /opt/bio_guard_bot/bio_guard_bot.py
+echo '$SERVER_BOT' | base64 -d > /opt/bio_guard_bot/server_bot.py
 echo '$REQUIREMENTS' | base64 -d > /opt/bio_guard_bot/requirements.txt
 echo '$ENV_FILE' | base64 -d > /opt/bio_guard_bot/.env
 
