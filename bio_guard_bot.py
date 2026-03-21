@@ -521,7 +521,6 @@ async def check_bio(message: types.Message):
     
     warning_msg = await message.reply(
         f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
-        f"👤 ᴜsᴇʀ: {message.from_user.first_name}\n"
         f"📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}",
         reply_markup=kb.as_markup()
     )
@@ -580,7 +579,7 @@ async def check_bio(message: types.Message):
         
         if action_taken:
             action_msg = await message.reply(
-                f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} warnings.",
+                f"🚨 <b>User @{message.from_user.username or 'NoUsername'}</b> has been {penalty}d after {limit} warnings.",
                 reply_markup=kb.as_markup()
             )
             
@@ -595,7 +594,7 @@ async def check_bio(message: types.Message):
             asyncio.create_task(delete_penalty_success())
         else:
             action_msg = await message.reply(
-                f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
+                f"🚨 <b>User @{message.from_user.username or 'NoUsername'}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
             )
         
         async def delete_action():
@@ -620,7 +619,7 @@ async def check_global_ban(message: types.Message):
                 try:
                     # Ban the user from the current group
                     await bot.ban_chat_member(message.chat.id, message.from_user.id)
-                    await message.reply(f"🚫 <b>ɢʟᴏʙᴀʟ ʙᴀɴ ᴅᴇᴛᴇᴄᴛᴇᴅ</b>\n\n👤 ᴜsᴇʀ: {message.from_user.id}\n📝 ʀᴇᴀsᴏɴ: {reason}\n\n<i>ᴛʜɪs ᴜsᴇʀ ʜᴀs ʙᴇᴇɴ ʙᴀɴɴᴇᴅ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>")
+                    await message.reply(f"🚫 <b>ɢʟᴏʙᴀʟ ʙᴀɴ ᴅᴇᴛᴇᴄᴛᴇᴅ</b>\n\n👤 ᴜsᴇʀ: @{message.from_user.username or 'NoUsername'}\n📝 ʀᴇᴀsᴏɴ: {reason}\n\n<i>ᴛʜɪs ᴜsᴇʀ ʜᴀs ʙᴇᴇɴ ʙᴀɴɴᴇᴅ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>")
                     await log_activity("gban_auto", message.from_user.id, message.from_user.username, message.chat.id, message.chat.title, f"Auto-banned due to global ban: {reason}")
                     return True
                 except Exception as e:
@@ -717,7 +716,6 @@ async def monitor_edited_message(message: types.Message):
     try:
         warning_msg = await message.answer(
             f"⚠️ <b>ᴇᴅɪᴛᴛɪɴɢ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ!</b>\n\n"
-            f"👤 ᴜsᴇʀ: {message.from_user.first_name}\n"
             f"📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}\n\n"
             f"<i>ᴘʟᴇᴀsᴇ ᴅᴏ ɴᴏᴛ ᴇᴅɪᴛ ᴍᴇssᴀɢᴇs ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.</i>",
             reply_markup=kb.as_markup()
@@ -756,18 +754,18 @@ async def monitor_edited_message(message: types.Message):
             await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
                                          permissions=types.ChatPermissions(can_send_messages=False))
             penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
-            await message.answer(f"⚠️ {message.from_user.first_name} muted! Reached warning limit ({count}/{limit}).", 
+            await message.answer(f"⚠️ @{message.from_user.username or 'NoUsername'} muted! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
         elif penalty == "kick" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             await bot.unban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
-            await message.answer(f"⚠️ {message.from_user.first_name} kicked! Reached warning limit ({count}/{limit}).", 
+            await message.answer(f"⚠️ @{message.from_user.username or 'NoUsername'} kicked! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
         elif penalty == "ban" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
-            await message.answer(f"⚠️ {message.from_user.first_name} banned! Reached warning limit ({count}/{limit}).", 
+            await message.answer(f"⚠️ @{message.from_user.username or 'NoUsername'} banned! Reached warning limit ({count}/{limit}).", 
                                reply_markup=penalty_kb.as_markup())
 
 # Monitor chat member updates (join/leave)
@@ -1182,9 +1180,14 @@ async def remove_warn_handler(call: types.CallbackQuery):
                     kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{user_id}")
                 kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{user_id}")
                 
+                # Get updated settings for display
+                async with db.execute("SELECT warn_limit FROM settings WHERE chat_id=?", (call.message.chat.id,)) as cur:
+                    row = await cur.fetchone()
+                    display_limit = row[0] if row else 3
+                
                 await call.message.edit_text(
                     f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
-                    f"<b>Warnings remaining: {new_count}</b>",
+                    f"📊 ᴡᴀʀɴɪɴɢꜱ: {new_count}/{display_limit}",
                     reply_markup=kb.as_markup()
                 )
                 await call.answer("✅ Warning removed!")
@@ -1213,7 +1216,7 @@ async def reset_warn_handler(call: types.CallbackQuery):
         kb.button(text="✅ Warnings Reset", callback_data="noop")
         
         await call.message.edit_text(
-            f"✅ ᴀʟʟ ᴡᴀʀɴɪɴɢꜱ ʀᴇꜱᴇᴛ ꜰᴏʀ ᴜꜱᴇʀ {user_id}\n\n"
+            f"✅ ᴀʟʟ ᴡᴀʀɴɪɴɢꜱ ʀᴇꜱᴇᴛ ꜰᴏʀ ᴜꜱᴇʀ\n\n"
             f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
             reply_markup=kb.as_markup()
         )
