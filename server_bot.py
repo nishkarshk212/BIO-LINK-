@@ -18,7 +18,7 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Get bot name
-BOT_NAME = "Bio Guard Bot"
+BOT_NAME = "[ 🇵؜ᴀɴᴅᴀ 🆇 🇸؜ᴇᴄᴜʀɪᴛʏ ]"
 
 # Database initialization
 async def init_db():

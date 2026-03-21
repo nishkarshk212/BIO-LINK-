@@ -19,7 +19,7 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Get bot name
-BOT_NAME = "Bio Guard Bot"
+BOT_NAME = "[ 🇵؜ᴀɴᴅᴀ 🆇 🇸؜ᴇᴄᴜʀɪᴛʏ ]"
 
 # Owner username - only this user can access logs
 OWNER_USERNAME = "Jayden_212"
