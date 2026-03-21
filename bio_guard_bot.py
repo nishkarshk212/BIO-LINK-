@@ -391,10 +391,13 @@ async def check_bio(message: types.Message):
                 await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (message.chat.id, message.from_user.id, count))
         await db.commit()
 
-    # Send warning
+    # Send warning with custom format and buttons
+    kb = InlineKeyboardBuilder()
+    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}")
+    
     warning_msg = await message.reply(
-        f"⚠ Warning {count}/{limit} | ID: <code>{message.from_user.id}</code>\n"
-        f"Reason: Bio contains link."
+        f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
+        reply_markup=kb.as_markup()
     )
     
     # Log the warning
@@ -797,6 +800,79 @@ async def readd_user(call: types.CallbackQuery):
         await call.message.delete()
     except Exception as e:
         await call.answer(f"Error re-adding user: {str(e)}", show_alert=True)
+
+# Remove single warning handler
+@dp.callback_query(lambda c: c.data.startswith("remove_warn_"))
+async def remove_warn_handler(call: types.CallbackQuery):
+    user_id = int(call.data.split("_")[2])
+    
+    # Check if admin is clicking
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can remove warnings!", show_alert=True)
+        return
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", 
+                            (call.message.chat.id, user_id)) as cur:
+            row = await cur.fetchone()
+            if row and row[0] > 0:
+                new_count = row[0] - 1
+                if new_count > 0:
+                    await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", 
+                                   (new_count, call.message.chat.id, user_id))
+                else:
+                    await db.execute("DELETE FROM warns WHERE chat_id=? AND user_id=?", 
+                                   (call.message.chat.id, user_id))
+                await db.commit()
+                
+                # Update the warning message with new count and reset button
+                kb = InlineKeyboardBuilder()
+                if new_count > 0:
+                    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{user_id}")
+                kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{user_id}")
+                
+                await call.message.edit_text(
+                    f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
+                    f"<b>Warnings remaining: {new_count}</b>",
+                    reply_markup=kb.as_markup()
+                )
+                await call.answer("✅ Warning removed!")
+            else:
+                await call.answer("No warnings to remove!", show_alert=True)
+
+# Reset all warnings handler
+@dp.callback_query(lambda c: c.data.startswith("reset_warn_"))
+async def reset_warn_handler(call: types.CallbackQuery):
+    user_id = int(call.data.split("_")[2])
+    
+    # Check if admin is clicking
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can reset warnings!", show_alert=True)
+        return
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        # Delete all warnings for this user
+        await db.execute("DELETE FROM warns WHERE chat_id=? AND user_id=?", 
+                        (call.message.chat.id, user_id))
+        await db.commit()
+        
+        # Update the message
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Warnings Reset", callback_data="noop")
+        
+        await call.message.edit_text(
+            f"✅ ᴀʟʟ ᴡᴀʀɴɪɴɢꜱ ʀᴇꜱᴇᴛ ꜰᴏʀ ᴜꜱᴇʀ {user_id}\n\n"
+            f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
+            reply_markup=kb.as_markup()
+        )
+        await call.answer("✅ All warnings reset!")
+
+# No-op handler for informational buttons
+@dp.callback_query(lambda c: c.data == "noop")
+async def noop_handler(call: types.CallbackQuery):
+    await call.answer()
 
 # Main function
 async def main():
