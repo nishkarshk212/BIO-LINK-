@@ -672,6 +672,9 @@ async def monitor_edited_message(message: types.Message):
         elif edit_apply_to == "admins":
             if user_status in ["administrator", "creator"]:
                 should_apply = True
+        elif edit_apply_to == "members_and_admins":
+            if user_status in ["member", "administrator", "creator"]:
+                should_apply = True
         elif edit_apply_to == "everyone":
             should_apply = True
             
@@ -1019,6 +1022,7 @@ async def change_edit_apply_callback(call: types.CallbackQuery):
     # Show checkmark for selected option
     kb.button(text=("✅ " if current == "members" else "") + "Members", callback_data="edit_apply_members")
     kb.button(text=("✅ " if current == "admins" else "") + "Admins", callback_data="edit_apply_admins")
+    kb.button(text=("✅ " if current == "members_and_admins" else "") + "Members & Admins", callback_data="edit_apply_both")
     kb.button(text=("✅ " if current == "everyone" else "") + "Everyone", callback_data="edit_apply_everyone")
     kb.button(text="↩︎ Back", callback_data="back_to_settings")
     kb.adjust(1)
@@ -1041,6 +1045,14 @@ async def edit_apply_admins_callback(call: types.CallbackQuery):
         await db.commit()
     await refresh_settings_menu(call, None, None, None, None, "admins")
     await call.answer("✅ Edit Apply to: Admins")
+
+@dp.callback_query(lambda c: c.data == "edit_apply_both")
+async def edit_apply_both_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET edit_apply_to=? WHERE chat_id=?", ("members_and_admins", call.message.chat.id))
+        await db.commit()
+    await refresh_settings_menu(call, None, None, None, None, "members_and_admins")
+    await call.answer("✅ Edit Apply to: Members & Admins")
 
 @dp.callback_query(lambda c: c.data == "edit_apply_everyone")
 async def edit_apply_everyone_callback(call: types.CallbackQuery):
