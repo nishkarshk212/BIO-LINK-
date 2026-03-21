@@ -93,8 +93,58 @@ async def start_command(message: types.Message):
     try:
         bot_username = (await bot.get_me()).username
         kb.button(text="✚ Add To Group", url=f"https://t.me/{bot_username}?startgroup=true")
-    except Exception:
+        
+        # Get bot's profile photo
+        photos = await bot.get_user_profile_photos((await bot.get_me()).id)
+        if photos.total_count > 0:
+            photo_id = photos.photos[0][0].file_id
+            await message.answer_photo(
+                photo=photo_id,
+                caption=f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
+                        f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
+                        f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
+                        f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
+                        f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
+                        f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
+                        f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
+                        f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
+                        f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
+                reply_markup=kb.as_markup()
+            )
+        else:
+            # No profile picture, send text only
+            await message.answer(
+                f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
+                f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
+                f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
+                f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
+                f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
+                f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
+                f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
+                f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
+                f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
+                reply_markup=kb.as_markup()
+            )
+    except Exception as e:
+        print(f"Error getting bot profile photo: {e}")
         kb.button(text="✚ Add To Group", url="https://t.me/your_bot_username?startgroup=true")
+        kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
+        kb.button(text="⚙ Settings", callback_data="open_settings_menu")
+        kb.button(text="☂ Updates", url="https://t.me/Tele_212_bots")
+        kb.adjust(2)
+        await message.answer(
+            f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
+            f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
+            f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
+            f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
+            f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
+            f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
+            f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
+            f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
+            f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
+            reply_markup=kb.as_markup()
+        )
+        return
     
     kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
     kb.button(text="⚙ Settings", callback_data="open_settings_menu")
