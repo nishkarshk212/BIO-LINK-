@@ -118,33 +118,25 @@ async def start_command(message: types.Message):
         
         # Get bot's profile photo
         photos = await bot.get_user_profile_photos((await bot.get_me()).id)
+        start_msg = (
+            f"๏ ᴛʜɪs ɪs <a href='https://t.me/{bot_username}'>{BOT_NAME}</a>\n\n"
+            f"➻ ᴀ ᴘᴏᴡᴇʀғᴜʟ sᴇᴄᴜʀɪᴛʏ ʙᴏᴛ ᴅᴇsɪɢɴᴇᴅ ᴛᴏ ᴘʀᴏᴛᴇᴄᴛ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ\n"
+            f"ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ & ɢɪᴠᴇ ᴍᴇ ᴀᴅᴍɪɴ & ᴅᴇʟᴇᴛᴇ ᴍᴇssᴀɢᴇ ʀɪɢʜᴛ ɪ sᴛᴀʀᴛ ᴘʀᴏᴛᴇᴄᴛɪɴɢ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\n"
+            f"➻ ɢɪᴠᴇ ᴍᴇ ᴀ ᴄʜᴀɴᴄᴇ ʜᴀɴᴅʟᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ.\n"
+            f"➻ ᴊᴏɪɴ sᴜᴘᴘᴏʀᴛ ғᴏʀ ᴍᴏʀᴇ ᴜᴘᴅᴀᴛᴇs.🥂"
+        )
+        
         if photos.total_count > 0:
             photo_id = photos.photos[0][0].file_id
             await message.answer_photo(
                 photo=photo_id,
-                caption=f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
-                        f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
-                        f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
-                        f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
-                        f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
-                        f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
-                        f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
-                        f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
-                        f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
+                caption=start_msg,
                 reply_markup=kb.as_markup()
             )
         else:
             # No profile picture, send text only
             await message.answer(
-                f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
-                f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
-                f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
-                f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
-                f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
-                f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
-                f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
-                f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
-                f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
+                start_msg,
                 reply_markup=kb.as_markup()
             )
     except Exception as e:
@@ -156,16 +148,16 @@ async def start_command(message: types.Message):
         kb.button(text="⚙ Settings", callback_data="open_settings_menu")
         kb.button(text="☂ Updates", url="https://t.me/Tele_212_bots")
         kb.adjust(2)
+        
+        start_msg = (
+            f"๏ ᴛʜɪs ɪs <a href='https://t.me/your_bot_username'>{BOT_NAME}</a>\n\n"
+            f"➻ ᴀ ᴘᴏᴡᴇʀғᴜʟ sᴇᴄᴜʀɪᴛʏ ʙᴏᴛ ᴅᴇsɪɢɴᴇᴅ ᴛᴏ ᴘʀᴏᴛᴇᴄᴛ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ\n"
+            f"ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ & ɢɪᴠᴇ ᴍᴇ ᴀᴅᴍɪɴ & ᴅᴇʟᴇᴛᴇ ᴍᴇssᴀɢᴇ ʀɪɢʜᴛ ɪ sᴛᴀʀᴛ ᴘʀᴏᴛᴇᴄᴛɪɴɢ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\n"
+            f"➻ ɢɪᴠᴇ ᴍᴇ ᴀ ᴄʜᴀɴᴄᴇ ʜᴀɴᴅʟᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ.\n"
+            f"➻ ᴊᴏɪɴ sᴜᴘᴘᴏʀᴛ ғᴏʀ ᴍᴏʀᴇ ᴜᴘᴅᴀᴛᴇs.🥂"
+        )
         await message.answer(
-            f"🛡️ <b>{BOT_NAME}</b> • ᴍᴏᴅᴇʀᴀᴛɪᴏɴ ꜱʏꜱᴛᴇᴍ\n\n"
-            f"🔐 ʏᴏᴜʀ ᴄᴏᴍᴘʟᴇᴛᴇ ɢʀᴏᴜᴘ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ ꜱᴏʟᴜᴛɪᴏɴ\n\n"
-            f"⚙️ ꜰᴇᴀᴛᴜʀᴇꜱ:\n"
-            f"• ɴꜱꜰᴡ ᴅᴇᴛᴇᴄᴛɪᴏɴ\n"
-            f"• ʟɪɴᴋ ꜰɪʟᴛᴇʀ\n"
-            f"• ᴀɴᴛɪ-ꜱᴘᴀᴍ\n"
-            f"• ꜱᴛɪᴄᴋᴇʀ ʙʟᴏᴄᴋ\n"
-            f"• ɢʟᴏʙᴀʟ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ\n\n"
-            f"⚡ ꜱᴇᴄᴜʀᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ ɴᴏᴡ!",
+            start_msg,
             reply_markup=kb.as_markup()
         )
 

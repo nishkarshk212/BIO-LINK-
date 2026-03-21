@@ -69,19 +69,18 @@ async def start_command(message: types.Message):
     kb.button(text="♛ Owner", url="https://t.me/Jayden_212")
     kb.adjust(2)  # Make it consistent with 2 columns like in bio_guard_bot.py
     
+    bot_username = "your_bot_username"
+    try:
+        bot_username = (await bot.get_me()).username
+    except Exception:
+        pass
+
     await message.answer(
-        f"🔗 <b>{BOT_NAME}</b>🔒\n"
-        f"👋 Hello! <b>{message.from_user.first_name}</b> I am an Automatic Bio Link Checker Bot.\n\n"
-        f"🚫 I Detect And Restrict Users With Links In Their Bio.\n\n"
-        f"🛡 Perfect For:\n"
-        f"• Secure Groups\n"
-        f"• Anti-Spam Control\n"
-        f"• Clean Communities\n\n"
-        f"⚡ How To Use:\n"
-        f"1️⃣ Add Me To Your Group\n"
-        f"2️⃣ Give Me Admin Permission\n"
-        f"3️⃣ Enjoy Automatic Protection🔥\n\n"
-        f"🔒 I Keep Your Group Safe From Link Spammers!",
+        f"๏ ᴛʜɪs ɪs <a href='https://t.me/{bot_username}'>{BOT_NAME}</a>\n\n"
+        f"➻ ᴀ ᴘᴏᴡᴇʀғᴜʟ sᴇᴄᴜʀɪᴛʏ ʙᴏᴛ ᴅᴇsɪɢɴᴇᴅ ᴛᴏ ᴘʀᴏᴛᴇᴄᴛ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ\n"
+        f"ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ & ɢɪᴠᴇ ᴍᴇ ᴀᴅᴍɪɴ & ᴅᴇʟᴇᴛᴇ ᴍᴇssᴀɢᴇ ʀɪɢʜᴛ ɪ sᴛᴀʀᴛ ᴘʀᴏᴛᴇᴄᴛɪɴɢ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\n"
+        f"➻ ɢɪᴠᴇ ᴍᴇ ᴀ ᴄʜᴀɴᴄᴇ ʜᴀɴᴅʟᴇ ʏᴏᴜʀ ɢʀᴏᴜᴘ.\n"
+        f"➻ ᴊᴏɪɴ sᴜᴘᴘᴏʀᴛ ғᴏʀ ᴍᴏʀᴇ ᴜᴘᴅᴀᴛᴇs.🥂",
         reply_markup=kb.as_markup()
     )
 
