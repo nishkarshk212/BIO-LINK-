@@ -394,6 +394,8 @@ async def check_bio(message: types.Message):
     # Send warning with custom format and buttons
     kb = InlineKeyboardBuilder()
     kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}")
+    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}")
+    kb.adjust(2)
     
     warning_msg = await message.reply(
         f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
