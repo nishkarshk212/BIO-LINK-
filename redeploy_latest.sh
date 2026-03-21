@@ -177,7 +177,7 @@ echo "Recent bot logs:"
 journalctl -u bio-guard-bot.service -n 10 --no-pager
 EOF
 
-if [ \$? -eq 0 ]; then
+if [ $? -eq 0 ]; then
     echo ""
     echo "✓ Server redeployment completed successfully!"
     echo "Bio Guard Bot with the latest code (including all button fixes) is now running on the server."
