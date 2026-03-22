@@ -737,10 +737,6 @@ async def monitor_edited_message(message: types.Message):
     if message.chat.type not in ["group", "supergroup"]:
         return
     
-    # Skip owner editing (can bypass if needed)
-    if message.from_user.username == OWNER_USERNAME:
-        return
-    
     # Get settings - use ONLY edit checker settings, not bio settings
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT warn_limit, penalty, edit_checker, edit_apply_to, edit_penalty FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
@@ -773,6 +769,7 @@ async def monitor_edited_message(message: types.Message):
             if user_status in ["member", "administrator", "creator"]:
                 should_apply = True
         elif edit_apply_to == "everyone":
+            # Apply to EVERYONE including owner when set to everyone
             should_apply = True
             
         if not should_apply:
