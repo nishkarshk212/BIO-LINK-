@@ -985,6 +985,22 @@ async def edit_checker_menu_callback(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "open_settings_menu")
 async def open_settings_menu_callback(call: types.CallbackQuery):
+    # Check permissions
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    
+    # Allow access for:
+    # 1. Group owner (creator)
+    # 2. Admins with can_change_info AND can_restrict_members permissions
+    if chat_member.status == "administrator":
+        # Check if admin has required permissions
+        if not (chat_member.can_change_info and chat_member.can_restrict_members):
+            await call.answer("❌ Only owner or admins with full permissions can access settings!", show_alert=True)
+            return
+    elif chat_member.status != "creator":
+        # Not owner and not admin with permissions
+        await call.answer("❌ Only group owner or admins with full permissions can access settings!", show_alert=True)
+        return
+    
     await call.answer("Opening settings...")
     
     # Get current settings
