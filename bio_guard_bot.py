@@ -996,16 +996,20 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     
     # Get current settings
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members", "owner"))
                 await db.commit()
-                row = (3, "mute", "members", 1, 1, "members")
+                row = (3, "mute", "members", 1, 1, "members", "owner")
     
-    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control = row
     kb = InlineKeyboardBuilder()
+    
+    # Who Can Control section - Top priority with cycle button
+    control_display = who_can_control.capitalize()
+    kb.button(text=f"👑 Access: {control_display}", callback_data="cycle_who_can_control")
     
     # Main category buttons - Bio Checker and Edit Checker
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
@@ -1014,7 +1018,7 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 1)
+    kb.adjust(2, 2, 1)
     
     # Delete the original message (works for both text and photo)
     try:
@@ -1307,16 +1311,20 @@ async def open_settings_here_callback(call: types.CallbackQuery):
     
     # Open settings directly in the group
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty, who_can_control FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members", "mute"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty, who_can_control) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members", "mute", "owner"))
                 await db.commit()
-                row = (3, "mute", "members", 1, 1, "members", "mute")
+                row = (3, "mute", "members", 1, 1, "members", "mute", "owner")
     
-    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty, who_can_control = row
     kb = InlineKeyboardBuilder()
+    
+    # Who Can Control section - Top priority with cycle button
+    control_display = who_can_control.capitalize()
+    kb.button(text=f"👑 Access: {control_display}", callback_data="cycle_who_can_control")
     
     # Main category buttons - Bio Checker and Edit Checker
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
@@ -1325,7 +1333,7 @@ async def open_settings_here_callback(call: types.CallbackQuery):
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 1)
+    kb.adjust(2, 2, 1)
     
     await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
     await call.answer("✅ Settings opened here")
