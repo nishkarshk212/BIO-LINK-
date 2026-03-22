@@ -860,7 +860,10 @@ async def monitor_edited_message(message: types.Message):
         penalty_kb = InlineKeyboardBuilder()
         penalty_kb.adjust(1)
         
-        if effective_penalty == "mute" and bot_member.can_restrict_members:
+        # Check if penalty is "warn only" - no action needed
+        if effective_penalty == "warn":
+            await message.answer(f"⚠️ User {message.from_user.id} reached warning limit ({count}/{limit}) but penalty is set to 'warn only' - no action taken.")
+        elif effective_penalty == "mute" and bot_member.can_restrict_members:
             await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
                                          permissions=types.ChatPermissions(can_send_messages=False))
             penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
@@ -946,21 +949,23 @@ async def edit_checker_menu_callback(call: types.CallbackQuery):
     
     # Get edit checker settings
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, edit_penalty, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                edit_checker, edit_apply_to = 1, "members"
+                limit, edit_penalty, edit_checker, edit_apply_to = 3, "mute", 1, "members"
             else:
-                edit_checker, edit_apply_to = row
+                limit, edit_penalty, edit_checker, edit_apply_to = row
     
     kb = InlineKeyboardBuilder()
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
     
     # Edit Checker specific settings
     kb.button(text=f"✏️ Toggle: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {edit_penalty}", callback_data="change_edit_penalty")
     kb.button(text=f"👥 Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     kb.button(text="↩️ Back", callback_data="back_to_main_settings")
-    kb.adjust(2, 1)
+    kb.adjust(2, 2, 1)
     
     await call.message.edit_text(
         "✏️ <b>Edit Checker Settings</b>\n\n"
@@ -1043,6 +1048,30 @@ async def limit_down_callback(call: types.CallbackQuery):
                 await refresh_settings_menu(call, new_limit, None, None)
             else:
                 await refresh_settings_menu(call, 3, None, None)
+
+# Penalty selection for Edit Checker
+@dp.callback_query(lambda c: c.data == "change_edit_penalty")
+async def change_edit_penalty_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    penalties = ["warn", "mute", "kick", "ban"]
+    for penalty in penalties:
+        kb.button(text=penalty.capitalize(), callback_data=f"set_edit_penalty_{penalty}")
+    kb.button(text="↩️ Back", callback_data="edit_checker_menu")
+    kb.adjust(2)
+    
+    await call.message.edit_text("🚨 Select Edit Penalty:", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("set_edit_penalty_"))
+async def set_edit_penalty_callback(call: types.CallbackQuery):
+    penalty = call.data.split("_")[3]
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET edit_penalty=? WHERE chat_id=?", (penalty, call.message.chat.id))
+        await db.commit()
+    
+    await edit_checker_menu_callback(call)
+    await call.answer(f"✅ Edit Penalty set to {penalty}")
 
 @dp.callback_query(lambda c: c.data == "change_penalty")
 async def change_penalty_callback(call: types.CallbackQuery):
