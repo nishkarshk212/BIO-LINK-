@@ -20,23 +20,9 @@ fi
 echo "✓ Local files verified (latest version with all button fixes)"
 
 # Encode files as base64 to embed in the SSH command (macOS compatible)
-if command -v base64 >/dev/null 2>&1; then
-    # macOS uses -b for line wrapping (0 means no wrapping), while Linux uses -w
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        BIO_GUARD_BOT=$(base64 -b 0 bio_guard_bot.py | tr -d '\n')
-        REQUIREMENTS=$(base64 -b 0 requirements.txt | tr -d '\n')
-        ENV_FILE=$(base64 -b 0 .env | tr -d '\n')
-    else
-        # Linux
-        BIO_GUARD_BOT=$(base64 -w 0 bio_guard_bot.py)
-        REQUIREMENTS=$(base64 -w 0 requirements.txt)
-        ENV_FILE=$(base64 -w 0 .env)
-    fi
-else
-    echo "Error: base64 command not found"
-    exit 1
-fi
+BIO_GUARD_BOT=$(base64 -i bio_guard_bot.py | tr -d '\n')
+REQUIREMENTS=$(base64 -i requirements.txt | tr -d '\n')
+ENV_FILE=$(base64 -i .env | tr -d '\n')
 
 echo "✓ Files encoded as base64"
 

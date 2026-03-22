@@ -589,50 +589,50 @@ async def check_bio(message: types.Message):
     # Check if bio checker is enabled
     if bio_checker_enabled == 0:
         return
-
-        # Check if user should be affected based on settings
-        chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        user_status = chat_member.status
-        
-        # Apply filtering based on settings
-        should_apply = False
-        
-        if apply_to == "members":
-            # Only apply to regular members (not admins/creators)
-            if user_status in ["member", "left"]:
-                should_apply = True
-        elif apply_to == "admins":
-            # Only apply to administrators and creators
-            if user_status in ["administrator", "creator"]:
-                should_apply = True
-        elif apply_to == "members_and_admins":
-            # Apply to both members and admins (everyone except left members)
-            if user_status in ["member", "administrator", "creator"]:
-                should_apply = True
-        elif apply_to == "everyone":
-            # Apply to everyone including bots and all statuses
+    
+    # Check if user should be affected based on settings
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    user_status = chat_member.status
+    
+    # Apply filtering based on settings
+    should_apply = False
+    
+    if apply_to == "members":
+        # Only apply to regular members (not admins/creators)
+        if user_status in ["member", "left"]:
             should_apply = True
-        
-        # Exit if this setting doesn't apply to this user
-        if not should_apply:
-            print(f"Bio detection skipped for user {message.from_user.id} (status: {user_status}, apply_to: {apply_to})")
-            return
+    elif apply_to == "admins":
+        # Only apply to administrators and creators
+        if user_status in ["administrator", "creator"]:
+            should_apply = True
+    elif apply_to == "members_and_admins":
+        # Apply to both members and admins (everyone except left members)
+        if user_status in ["member", "administrator", "creator"]:
+            should_apply = True
+    elif apply_to == "everyone":
+        # Apply to everyone including bots and all statuses
+        should_apply = True
+    
+    # Exit if this setting doesn't apply to this user
+    if not should_apply:
+        print(f"Bio detection skipped for user {message.from_user.id} (status: {user_status}, apply_to: {apply_to})")
+        return
 
-        # Add warning
-        async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
-            row = await cur.fetchone()
-            if row:
-                count = row[0] + 1
-                await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", (count, message.chat.id, message.from_user.id))
-            else:
-                count = 1
-                await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (message.chat.id, message.from_user.id, count))
-        await db.commit()
+    # Add warning
+    async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
+        row = await cur.fetchone()
+        if row:
+            count = row[0] + 1
+            await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", (count, message.chat.id, message.from_user.id))
+        else:
+            count = 1
+            await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (message.chat.id, message.from_user.id, count))
+    await db.commit()
 
     # Send warning with custom format and buttons
     kb = InlineKeyboardBuilder()
-    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}")
-    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}")
+    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}_bio")
+    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}_bio")
     kb.adjust(2)
     
     warning_msg = await message.reply(
@@ -828,8 +828,8 @@ async def monitor_edited_message(message: types.Message):
     
     # Send warning message with buttons
     kb = InlineKeyboardBuilder()
-    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}")
-    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}")
+    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}_edit")
+    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}_edit")
     kb.adjust(2)
     
     try:
@@ -1510,7 +1510,9 @@ async def readd_user(call: types.CallbackQuery):
 # Remove single warning handler
 @dp.callback_query(lambda c: c.data.startswith("remove_warn_"))
 async def remove_warn_handler(call: types.CallbackQuery):
-    user_id = int(call.data.split("_")[2])
+    parts = call.data.split("_")
+    user_id = int(parts[2])
+    warn_type = parts[3] if len(parts) > 3 else "bio"  # Default to bio for backward compatibility
     
     # Check if admin is clicking
     chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
@@ -1535,19 +1537,28 @@ async def remove_warn_handler(call: types.CallbackQuery):
                 # Update the warning message with new count and reset button
                 kb = InlineKeyboardBuilder()
                 if new_count > 0:
-                    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{user_id}")
-                kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{user_id}")
+                    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{user_id}_{warn_type}")
+                kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{user_id}_{warn_type}")
                 
                 # Get updated settings for display
                 async with db.execute("SELECT warn_limit FROM settings WHERE chat_id=?", (call.message.chat.id,)) as cur:
                     row = await cur.fetchone()
                     display_limit = row[0] if row else 3
                 
-                await call.message.edit_text(
-                    f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
-                    f"📊 ᴡᴀʀɴɪɴɢꜱ: {new_count}/{display_limit}",
-                    reply_markup=kb.as_markup()
-                )
+                # Show appropriate message based on warning type
+                if warn_type == "edit":
+                    await call.message.edit_text(
+                        f"⚠️ <b>ᴇᴅɪᴛᴛɪɴɢ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ!</b>\n\n"
+                        f"📊 ᴡᴀʀɴɪɴɢꜱ: {new_count}/{display_limit}\n\n"
+                        f"<i>ᴘʟᴇᴀsᴇ ᴅᴏ ɴᴏᴛ ᴇᴅɪᴛ ᴍᴇssᴀɢᴇs ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.</i>",
+                        reply_markup=kb.as_markup()
+                    )
+                else:  # bio warning
+                    await call.message.edit_text(
+                        f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
+                        f"📊 ᴡᴀʀɴɪɴɢꜱ: {new_count}/{display_limit}",
+                        reply_markup=kb.as_markup()
+                    )
                 await call.answer("✅ Warning removed!")
             else:
                 await call.answer("No warnings to remove!", show_alert=True)
@@ -1555,7 +1566,9 @@ async def remove_warn_handler(call: types.CallbackQuery):
 # Reset all warnings handler
 @dp.callback_query(lambda c: c.data.startswith("reset_warn_"))
 async def reset_warn_handler(call: types.CallbackQuery):
-    user_id = int(call.data.split("_")[2])
+    parts = call.data.split("_")
+    user_id = int(parts[2])
+    warn_type = parts[3] if len(parts) > 3 else "bio"  # Default to bio for backward compatibility
     
     # Check if admin is clicking
     chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
@@ -1573,11 +1586,20 @@ async def reset_warn_handler(call: types.CallbackQuery):
         kb = InlineKeyboardBuilder()
         kb.button(text="✅ Warnings Reset", callback_data="noop")
         
-        await call.message.edit_text(
-            f"✅ ᴀʟʟ ᴡᴀʀɴɪɴɢꜱ ʀᴇꜱᴇᴛ ꜰᴏʀ ᴜꜱᴇʀ\n\n"
-            f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
-            reply_markup=kb.as_markup()
-        )
+        # Show appropriate message based on warning type
+        if warn_type == "edit":
+            await call.message.edit_text(
+                f"✅ ᴀʟʟ ᴡᴀʀɴɪɴɢꜱ ʀᴇꜱᴇᴛ ꜰᴏʀ ᴜꜱᴇʀ\n\n"
+                f"⚠️ <b>ᴇᴅɪᴛᴛɪɴɢ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ!</b>\n\n"
+                f"<i>ᴘʟᴇᴀsᴇ ᴅᴏ ɴᴏᴛ ᴇᴅɪᴛ ᴍᴇssᴀɢᴇs ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.</i>",
+                reply_markup=kb.as_markup()
+            )
+        else:  # bio warning
+            await call.message.edit_text(
+                f"✅ ᴀʟʟ ᴡᴀʀɴɪɴɢꜱ ʀᴇꜱᴇᴛ ꜰᴏʀ ᴜꜱᴇʀ\n\n"
+                f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ",
+                reply_markup=kb.as_markup()
+            )
         await call.answer("✅ All warnings reset!")
 
 # No-op handler for informational buttons
