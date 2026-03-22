@@ -71,6 +71,13 @@ async def init_db():
             print("✅ Added 'bio_checker_enabled' column to settings table.")
         except Exception:
             pass # Already exists
+        
+        # Add who_can_control column if it doesn't exist
+        try:
+            await db.execute("ALTER TABLE settings ADD COLUMN who_can_control TEXT DEFAULT 'owner'")
+            print("✅ Added 'who_can_control' column to settings table.")
+        except Exception:
+            pass # Already exists
         await db.execute("""
         CREATE TABLE IF NOT EXISTS warns (
             chat_id INTEGER,
@@ -252,37 +259,27 @@ async def ungban_user(message: types.Message):
     await message.reply(f"✅ <b>Globally Unbanned</b>\n👤 User: {user_id}")
     await log_activity("ungban", user_id, None, message.chat.id, message.chat.title, "Globally unbanned")
 
-# Settings command - Owner and Admins with permissions access
+# Settings command - Owner only access (default)
 @dp.message(Command("settings"))
 async def open_settings(message: types.Message):
-    # Check permissions if in group
+    # Check if user is group owner
     if message.chat.type in ["group", "supergroup"]:
         chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        
-        # Allow access for:
-        # 1. Group owner (creator)
-        # 2. Admins with can_change_info AND can_restrict_members permissions
-        if chat_member.status == "administrator":
-            # Check if admin has required permissions
-            if not (chat_member.can_change_info and chat_member.can_restrict_members):
-                await message.reply("❌ Only owner or admins with full permissions can access settings!\n\nRequired permissions:\n• Change Info\n• Ban Members")
-                return
-        elif chat_member.status != "creator":
-            # Not owner and not admin with permissions
-            await message.reply("❌ Only group owner or admins with full permissions can access settings!")
+        if chat_member.status != "creator":  # Only owner can access settings
+            await message.reply("❌ Only group owner can access settings!")
             return
     
     # Settings logic
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty, who_can_control FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                               (message.chat.id, 3, "mute", "members", 1, 1, "members", "mute"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty, who_can_control) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                               (message.chat.id, 3, "mute", "members", 1, 1, "members", "mute", "owner"))
                 await db.commit()
-                row = (3, "mute", "members", 1, 1, "members", "mute")
+                row = (3, "mute", "members", 1, 1, "members", "mute", "owner")
     
-    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty, who_can_control = row
     kb = InlineKeyboardBuilder()
     
     # Show access options if in group
@@ -296,6 +293,10 @@ async def open_settings(message: types.Message):
     # Main settings menu (private chat or when opened directly)
     kb = InlineKeyboardBuilder()
     
+    # Who Can Control section - Top priority
+    control_display = who_can_control.capitalize().replace('_', ' ')
+    kb.button(text=f"👑 Who Can Control: {control_display}", callback_data="who_can_control_menu")
+    
     # Main category buttons - Bio Checker and Edit Checker
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
@@ -303,7 +304,7 @@ async def open_settings(message: types.Message):
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 1)  # Two checker buttons side by side, close button full width
+    kb.adjust(2, 2, 1)  # Two columns for checker buttons, close button full width
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
@@ -985,20 +986,10 @@ async def edit_checker_menu_callback(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "open_settings_menu")
 async def open_settings_menu_callback(call: types.CallbackQuery):
-    # Check permissions
+    # Check if user is group owner
     chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
-    
-    # Allow access for:
-    # 1. Group owner (creator)
-    # 2. Admins with can_change_info AND can_restrict_members permissions
-    if chat_member.status == "administrator":
-        # Check if admin has required permissions
-        if not (chat_member.can_change_info and chat_member.can_restrict_members):
-            await call.answer("❌ Only owner or admins with full permissions can access settings!", show_alert=True)
-            return
-    elif chat_member.status != "creator":
-        # Not owner and not admin with permissions
-        await call.answer("❌ Only group owner or admins with full permissions can access settings!", show_alert=True)
+    if chat_member.status != "creator":
+        await call.answer("❌ Only group owner can access settings!", show_alert=True)
         return
     
     await call.answer("Opening settings...")
@@ -1308,20 +1299,10 @@ async def edit_apply_everyone_callback(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "open_settings_here")
 async def open_settings_here_callback(call: types.CallbackQuery):
-    # Check permissions
+    # Check if user is group owner
     chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
-    
-    # Allow access for:
-    # 1. Group owner (creator)
-    # 2. Admins with can_change_info AND can_restrict_members permissions
-    if chat_member.status == "administrator":
-        # Check if admin has required permissions
-        if not (chat_member.can_change_info and chat_member.can_restrict_members):
-            await call.answer("❌ Only owner or admins with full permissions can access settings!", show_alert=True)
-            return
-    elif chat_member.status != "creator":
-        # Not owner and not admin with permissions
-        await call.answer("❌ Only group owner or admins with full permissions can access settings!", show_alert=True)
+    if chat_member.status != "creator":
+        await call.answer("❌ Only group owner can access settings!", show_alert=True)
         return
     
     # Open settings directly in the group
@@ -1353,27 +1334,77 @@ async def open_settings_here_callback(call: types.CallbackQuery):
 async def back_to_main_settings_callback(call: types.CallbackQuery):
     # Get current settings
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if row:
-                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
+                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control = row
             else:
-                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = 3, "mute", "members", 1, 1, "members"
+                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control = 3, "mute", "members", 1, 1, "members", "owner"
     
     kb = InlineKeyboardBuilder()
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
+    control_display = who_can_control.capitalize().replace('_', ' ')
     
+    kb.button(text=f"👑 Who Can Control: {control_display}", callback_data="who_can_control_menu")
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 1)
+    kb.adjust(2, 2, 1)
     
     await call.message.edit_text(
         "⚙ <b>Bio Guard Settings</b>",
         reply_markup=kb.as_markup()
     )
     await call.answer()
+
+# Who Can Control menu handlers
+@dp.callback_query(lambda c: c.data == "who_can_control_menu")
+async def who_can_control_menu_callback(call: types.CallbackQuery):
+    # Get current setting
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT who_can_control FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            current = row[0] if row else "owner"
+    
+    kb = InlineKeyboardBuilder()
+    # Show checkmark for selected option
+    kb.button(text=("✅ " if current == "owner" else "") + "Owner Only", callback_data="control_owner")
+    kb.button(text=("✅ " if current == "admin" else "") + "Admins", callback_data="control_admin")
+    kb.button(text=("✅ " if current == "moderator" else "") + "Moderators", callback_data="control_moderator")
+    kb.button(text="↩️ Back", callback_data="back_to_main_settings")
+    kb.adjust(1)
+    
+    await call.message.edit_text(
+        "👑 <b>Who Can Control Settings</b>\n\n"
+        "Select who can access and modify bot settings:",
+        reply_markup=kb.as_markup()
+    )
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data == "control_owner")
+async def control_owner_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", ("owner", call.message.chat.id))
+        await db.commit()
+    await back_to_main_settings_callback(call)
+    await call.answer("✅ Settings access: Owner Only")
+
+@dp.callback_query(lambda c: c.data == "control_admin")
+async def control_admin_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", ("admin", call.message.chat.id))
+        await db.commit()
+    await back_to_main_settings_callback(call)
+    await call.answer("✅ Settings access: Admins")
+
+@dp.callback_query(lambda c: c.data == "control_moderator")
+async def control_moderator_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", ("moderator", call.message.chat.id))
+        await db.commit()
+    await back_to_main_settings_callback(call)
+    await call.answer("✅ Settings access: Moderators")
 
 @dp.callback_query(lambda c: c.data == "back_to_settings")
 async def back_to_settings_callback(call: types.CallbackQuery):
