@@ -264,15 +264,15 @@ async def open_settings(message: types.Message):
     
     # Settings logic
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                               (message.chat.id, 3, "mute", "members", 1, 1, "members"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                               (message.chat.id, 3, "mute", "members", 1, 1, "members", "mute"))
                 await db.commit()
-                row = (3, "mute", "members", 1, 1, "members")
+                row = (3, "mute", "members", 1, 1, "members", "mute")
     
-    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, edit_penalty = row
     kb = InlineKeyboardBuilder()
     
     # Show access options if in group
