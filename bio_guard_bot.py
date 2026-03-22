@@ -252,14 +252,24 @@ async def ungban_user(message: types.Message):
     await message.reply(f"✅ <b>Globally Unbanned</b>\n👤 User: {user_id}")
     await log_activity("ungban", user_id, None, message.chat.id, message.chat.title, "Globally unbanned")
 
-# Settings command - Owner only access
+# Settings command - Owner and Admins with permissions access
 @dp.message(Command("settings"))
 async def open_settings(message: types.Message):
-    # Check if user is group owner
+    # Check permissions if in group
     if message.chat.type in ["group", "supergroup"]:
         chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if chat_member.status != "creator":  # Only owner can access settings
-            await message.reply("❌ Only group owner can access settings!")
+        
+        # Allow access for:
+        # 1. Group owner (creator)
+        # 2. Admins with can_change_info AND can_restrict_members permissions
+        if chat_member.status == "administrator":
+            # Check if admin has required permissions
+            if not (chat_member.can_change_info and chat_member.can_restrict_members):
+                await message.reply("❌ Only owner or admins with full permissions can access settings!\n\nRequired permissions:\n• Change Info\n• Ban Members")
+                return
+        elif chat_member.status != "creator":
+            # Not owner and not admin with permissions
+            await message.reply("❌ Only group owner or admins with full permissions can access settings!")
             return
     
     # Settings logic
@@ -1282,10 +1292,20 @@ async def edit_apply_everyone_callback(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "open_settings_here")
 async def open_settings_here_callback(call: types.CallbackQuery):
-    # Check if user is group owner
+    # Check permissions
     chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
-    if chat_member.status != "creator":
-        await call.answer("❌ Only group owner can access settings!", show_alert=True)
+    
+    # Allow access for:
+    # 1. Group owner (creator)
+    # 2. Admins with can_change_info AND can_restrict_members permissions
+    if chat_member.status == "administrator":
+        # Check if admin has required permissions
+        if not (chat_member.can_change_info and chat_member.can_restrict_members):
+            await call.answer("❌ Only owner or admins with full permissions can access settings!", show_alert=True)
+            return
+    elif chat_member.status != "creator":
+        # Not owner and not admin with permissions
+        await call.answer("❌ Only group owner or admins with full permissions can access settings!", show_alert=True)
         return
     
     # Open settings directly in the group
