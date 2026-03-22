@@ -277,16 +277,21 @@ async def open_settings(message: types.Message):
         return
     
     # Main settings menu (private chat or when opened directly)
+    kb = InlineKeyboardBuilder()
+    
+    # Bio Checker Settings Section
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
     
+    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✎ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"✎ Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
+    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    kb.button(text="✔︎ Close", callback_data="save_and_close")
-    kb.adjust(2)
+    # Close button - full width
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(2, 2, 1)  # Two columns for settings, one for close
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
@@ -915,16 +920,20 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     
     limit, penalty, apply_to, edit_checker, edit_apply_to = row
     kb = InlineKeyboardBuilder()
+    
+    # Bio Checker Settings Section
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
     
+    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✎ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"✎ Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
+    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    kb.button(text="✔︎ Close", callback_data="save_and_close")
-    kb.adjust(2)
+    # Close button - full width
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(2, 2, 1)
     
     # Delete the original message (works for both text and photo)
     try:
@@ -1023,16 +1032,20 @@ async def refresh_settings_menu(call, new_limit=None, new_penalty=None, new_appl
         edit_apply_to = new_edit_apply_to
     
     kb = InlineKeyboardBuilder()
+    
+    # Bio Checker Settings Section
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
     
+    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✎ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"✎ Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
+    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    kb.button(text="✔︎ Close", callback_data="save_and_close")
-    kb.adjust(2)
+    # Close button - full width
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(2, 2, 1)
     
     await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
     await call.answer()
@@ -1178,16 +1191,20 @@ async def open_settings_here_callback(call: types.CallbackQuery):
     
     limit, penalty, apply_to, edit_checker, edit_apply_to = row
     kb = InlineKeyboardBuilder()
+    
+    # Bio Checker Settings Section
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
     
+    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✎ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"✎ Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
+    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    kb.button(text="✔︎ Close", callback_data="save_and_close")
-    kb.adjust(2)
+    # Close button - full width
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(2, 2, 1)
     
     await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
     await call.answer("✅ Settings opened here")
@@ -1203,16 +1220,20 @@ async def back_to_settings_callback(call: types.CallbackQuery):
                 limit, penalty, apply_to, edit_checker, edit_apply_to = 3, "mute", "members", 1, "members"
     
     kb = InlineKeyboardBuilder()
+    
+    # Bio Checker Settings Section
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
     
+    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✎ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"✎ Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
+    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    kb.button(text="✔︎ & Close", callback_data="save_and_close")
-    kb.adjust(2)
+    # Close button - full width
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(2, 2, 1)
     
     await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
     await call.answer()
