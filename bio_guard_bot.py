@@ -64,6 +64,13 @@ async def init_db():
             print("✅ Added 'edit_penalty' column to settings table.")
         except Exception:
             pass # Already exists
+        
+        # Add bio_checker_enabled column if it doesn't exist
+        try:
+            await db.execute("ALTER TABLE settings ADD COLUMN bio_checker_enabled INTEGER DEFAULT 1")
+            print("✅ Added 'bio_checker_enabled' column to settings table.")
+        except Exception:
+            pass # Already exists
         await db.execute("""
         CREATE TABLE IF NOT EXISTS warns (
             chat_id INTEGER,
@@ -257,15 +264,15 @@ async def open_settings(message: types.Message):
     
     # Settings logic
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, edit_checker, edit_apply_to) VALUES (?, ?, ?, ?, ?, ?)", 
-                               (message.chat.id, 3, "mute", "members", 1, "members"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                               (message.chat.id, 3, "mute", "members", 1, 1, "members"))
                 await db.commit()
-                row = (3, "mute", "members", 1, "members")
+                row = (3, "mute", "members", 1, 1, "members")
     
-    limit, penalty, apply_to, edit_checker, edit_apply_to = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
     kb = InlineKeyboardBuilder()
     
     # Show access options if in group
@@ -280,6 +287,8 @@ async def open_settings(message: types.Message):
     kb = InlineKeyboardBuilder()
     
     # Bio Checker Settings Section
+    bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
+    kb.button(text=f"🧬 Bio Checker: {bio_status}", callback_data="toggle_bio_checker")
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
@@ -291,7 +300,7 @@ async def open_settings(message: types.Message):
     
     # Close button - full width
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 2, 1)  # Two columns for settings, one for close
+    kb.adjust(2, 2, 2, 1)  # Two columns for each section
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
@@ -563,15 +572,19 @@ async def check_bio(message: types.Message):
         return
 
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to) VALUES (?, ?, ?, ?)", 
-                               (message.chat.id, 3, "mute", "members"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled) VALUES (?, ?, ?, ?, ?)", 
+                               (message.chat.id, 3, "mute", "members", 1))
                 await db.commit()
-                limit, penalty, apply_to = 3, "mute", "members"
+                limit, penalty, apply_to, bio_checker_enabled = 3, "mute", "members", 1
             else:
-                limit, penalty, apply_to = row
+                limit, penalty, apply_to, bio_checker_enabled = row
+    
+    # Check if bio checker is enabled
+    if bio_checker_enabled == 0:
+        return
 
         # Check if user should be affected based on settings
         chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
@@ -910,18 +923,20 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     
     # Get current settings
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, edit_checker, edit_apply_to) VALUES (?, ?, ?, ?, ?, ?)", 
-                               (call.message.chat.id, 3, "mute", "members", 1, "members"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members"))
                 await db.commit()
-                row = (3, "mute", "members", 1, "members")
+                row = (3, "mute", "members", 1, 1, "members")
     
-    limit, penalty, apply_to, edit_checker, edit_apply_to = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
     kb = InlineKeyboardBuilder()
     
     # Bio Checker Settings Section
+    bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
+    kb.button(text=f"🧬 Bio Checker: {bio_status}", callback_data="toggle_bio_checker")
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
@@ -933,7 +948,7 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     
     # Close button - full width
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 2, 1)
+    kb.adjust(2, 2, 2, 1)
     
     # Delete the original message (works for both text and photo)
     try:
@@ -1010,14 +1025,14 @@ async def set_penalty_callback(call: types.CallbackQuery):
     await call.answer(f"✅ Penalty set to {penalty}")
 
 # Helper function to refresh settings menu
-async def refresh_settings_menu(call, new_limit=None, new_penalty=None, new_apply_to=None, new_edit_checker=None, new_edit_apply_to=None):
+async def refresh_settings_menu(call, new_limit=None, new_penalty=None, new_apply_to=None, new_bio_checker_enabled=None, new_edit_checker=None, new_edit_apply_to=None):
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if row:
-                limit, penalty, apply_to, edit_checker, edit_apply_to = row
+                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
             else:
-                limit, penalty, apply_to, edit_checker, edit_apply_to = 3, "mute", "members", 1, "members"
+                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = 3, "mute", "members", 1, 1, "members"
     
     # Use new values if provided
     if new_limit is not None:
@@ -1026,6 +1041,8 @@ async def refresh_settings_menu(call, new_limit=None, new_penalty=None, new_appl
         penalty = new_penalty
     if new_apply_to is not None:
         apply_to = new_apply_to
+    if new_bio_checker_enabled is not None:
+        bio_checker_enabled = new_bio_checker_enabled
     if new_edit_checker is not None:
         edit_checker = new_edit_checker
     if new_edit_apply_to is not None:
@@ -1034,6 +1051,8 @@ async def refresh_settings_menu(call, new_limit=None, new_penalty=None, new_appl
     kb = InlineKeyboardBuilder()
     
     # Bio Checker Settings Section
+    bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
+    kb.button(text=f"🧬 Bio Checker: {bio_status}", callback_data="toggle_bio_checker")
     kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
     kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
     kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
@@ -1045,7 +1064,7 @@ async def refresh_settings_menu(call, new_limit=None, new_penalty=None, new_appl
     
     # Close button - full width
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 2, 1)
+    kb.adjust(2, 2, 2, 1)
     
     await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
     await call.answer()
@@ -1101,6 +1120,23 @@ async def apply_everyone_callback(call: types.CallbackQuery):
         await db.commit()
     await refresh_settings_menu(call, None, None, "everyone")
     await call.answer("✅ Apply to: Everyone")
+
+@dp.callback_query(lambda c: c.data == "toggle_bio_checker")
+async def toggle_bio_checker_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT bio_checker_enabled FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                current_status = row[0]
+                new_status = 0 if current_status == 1 else 1
+                await db.execute("UPDATE settings SET bio_checker_enabled=? WHERE chat_id=?", (new_status, call.message.chat.id))
+                await db.commit()
+                await refresh_settings_menu(call, None, None, None, new_status, None, None)
+                status_text = "Enabled" if new_status == 1 else "Disabled"
+                await call.answer(f"✅ Bio Checker {status_text}")
+            else:
+                await refresh_settings_menu(call, None, None, None, 1, None, None)
+                await call.answer("✅ Bio Checker Enabled")
 
 @dp.callback_query(lambda c: c.data == "toggle_edit_checker")
 async def toggle_edit_checker_callback(call: types.CallbackQuery):
