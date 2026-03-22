@@ -286,21 +286,14 @@ async def open_settings(message: types.Message):
     # Main settings menu (private chat or when opened directly)
     kb = InlineKeyboardBuilder()
     
-    # Bio Checker Settings Section
+    # Main category buttons - Bio Checker and Edit Checker
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
-    kb.button(text=f"🧬 Bio Checker: {bio_status}", callback_data="toggle_bio_checker")
-    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
-    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
-    kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
-    
-    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    # Close button - full width
+    kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
+    kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 2, 2, 1)  # Two columns for each section
+    kb.adjust(2, 1)  # Two checker buttons side by side, close button full width
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
 
@@ -917,6 +910,64 @@ async def on_chat_member_update(message: types.ChatMemberUpdated):
         )
 
 # Callback handler for Settings button
+@dp.callback_query(lambda c: c.data == "bio_checker_menu")
+async def bio_checker_menu_callback(call: types.CallbackQuery):
+    await call.answer("Opening Bio Checker settings...")
+    
+    # Get bio checker settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                limit, penalty, apply_to, bio_checker_enabled = 3, "mute", "members", 1
+            else:
+                limit, penalty, apply_to, bio_checker_enabled = row
+    
+    kb = InlineKeyboardBuilder()
+    bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
+    
+    # Bio Checker specific settings
+    kb.button(text=f"🧬 Toggle: {bio_status}", callback_data="toggle_bio_checker")
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
+    kb.button(text=f"👥 Apply To: {apply_to}", callback_data="change_apply")
+    kb.button(text="↩️ Back", callback_data="back_to_main_settings")
+    kb.adjust(2, 2, 1)
+    
+    await call.message.edit_text(
+        "🧬 <b>Bio Checker Settings</b>\n\n"
+        "Configure bio link monitoring:",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(lambda c: c.data == "edit_checker_menu")
+async def edit_checker_menu_callback(call: types.CallbackQuery):
+    await call.answer("Opening Edit Checker settings...")
+    
+    # Get edit checker settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                edit_checker, edit_apply_to = 1, "members"
+            else:
+                edit_checker, edit_apply_to = row
+    
+    kb = InlineKeyboardBuilder()
+    edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
+    
+    # Edit Checker specific settings
+    kb.button(text=f"✏️ Toggle: {edit_status}", callback_data="toggle_edit_checker")
+    kb.button(text=f"👥 Apply To: {edit_apply_to}", callback_data="change_edit_apply")
+    kb.button(text="↩️ Back", callback_data="back_to_main_settings")
+    kb.adjust(2, 1)
+    
+    await call.message.edit_text(
+        "✏️ <b>Edit Checker Settings</b>\n\n"
+        "Configure message edit monitoring:",
+        reply_markup=kb.as_markup()
+    )
+
 @dp.callback_query(lambda c: c.data == "open_settings_menu")
 async def open_settings_menu_callback(call: types.CallbackQuery):
     await call.answer("Opening settings...")
@@ -934,21 +985,14 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
     kb = InlineKeyboardBuilder()
     
-    # Bio Checker Settings Section
+    # Main category buttons - Bio Checker and Edit Checker
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
-    kb.button(text=f"🧬 Bio Checker: {bio_status}", callback_data="toggle_bio_checker")
-    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_limit")
-    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_penalty")
-    kb.button(text=f"👥 Bio Apply To: {apply_to}", callback_data="change_apply")
-    
-    # Edit Checker Settings Section
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    kb.button(text=f"✏️ Edit Checker: {edit_status}", callback_data="toggle_edit_checker")
-    kb.button(text=f"👥 Edit Apply To: {edit_apply_to}", callback_data="change_edit_apply")
     
-    # Close button - full width
+    kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
+    kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 2, 2, 1)
+    kb.adjust(2, 1)
     
     # Delete the original message (works for both text and photo)
     try:
@@ -1244,6 +1288,32 @@ async def open_settings_here_callback(call: types.CallbackQuery):
     
     await call.message.edit_text("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
     await call.answer("✅ Settings opened here")
+
+@dp.callback_query(lambda c: c.data == "back_to_main_settings")
+async def back_to_main_settings_callback(call: types.CallbackQuery):
+    # Get current settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = row
+            else:
+                limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to = 3, "mute", "members", 1, 1, "members"
+    
+    kb = InlineKeyboardBuilder()
+    bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
+    edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
+    
+    kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
+    kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
+    kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
+    kb.adjust(2, 1)
+    
+    await call.message.edit_text(
+        "⚙ <b>Bio Guard Settings</b>",
+        reply_markup=kb.as_markup()
+    )
+    await call.answer()
 
 @dp.callback_query(lambda c: c.data == "back_to_settings")
 async def back_to_settings_callback(call: types.CallbackQuery):
