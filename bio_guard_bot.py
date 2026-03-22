@@ -161,10 +161,20 @@ async def start_command(message: types.Message):
         # Send video instead of profile picture
         video_path = "/opt/bio_guard_bot/91562-629172467.mp4"
         if os.path.exists(video_path):
-            with open(video_path, 'rb') as video_file:
+            try:
+                # Use FSInputFile for proper file handling
+                from aiogram.types import FSInputFile
+                video_file = FSInputFile(video_path)
                 await message.answer_video(
                     video=video_file,
                     caption=start_msg,
+                    reply_markup=kb.as_markup()
+                )
+            except Exception as video_error:
+                print(f"Error sending video: {video_error}")
+                # Fallback to text if video fails
+                await message.answer(
+                    start_msg,
                     reply_markup=kb.as_markup()
                 )
         else:
