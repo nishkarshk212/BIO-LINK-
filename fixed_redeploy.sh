@@ -17,12 +17,25 @@ if [ ! -f "bio_guard_bot.py" ] || [ ! -f "requirements.txt" ] || [ ! -f ".env" ]
     exit 1
 fi
 
+# Check if video file exists (optional)
+VIDEO_FILE="91562-629172467.mp4"
+if [ -f "$VIDEO_FILE" ]; then
+    echo "✓ Video file found: $VIDEO_FILE"
+    VIDEO_EXISTS=1
+else
+    echo "⚠ Video file not found: $VIDEO_FILE (will use fallback)"
+    VIDEO_EXISTS=0
+fi
+
 echo "✓ Local files verified (latest version with all button fixes)"
 
 # Encode files as base64 to embed in the SSH command (macOS compatible)
 BIO_GUARD_BOT=$(base64 -i bio_guard_bot.py | tr -d '\n')
 REQUIREMENTS=$(base64 -i requirements.txt | tr -d '\n')
 ENV_FILE=$(base64 -i .env | tr -d '\n')
+if [ "$VIDEO_EXISTS" -eq 1 ]; then
+    VIDEO_FILE_BASE64=$(base64 -i "$VIDEO_FILE" | tr -d '\n')
+fi
 
 echo "✓ Files encoded as base64"
 
@@ -56,6 +69,10 @@ echo "Created project directory /opt/bio_guard_bot"
 echo '$BIO_GUARD_BOT' | base64 -d > /opt/bio_guard_bot/bio_guard_bot.py
 echo '$REQUIREMENTS' | base64 -d > /opt/bio_guard_bot/requirements.txt
 echo '$ENV_FILE' | base64 -d > /opt/bio_guard_bot/.env
+if [ "$VIDEO_EXISTS" -eq 1 ]; then
+    echo '$VIDEO_FILE_BASE64' | base64 -d > /opt/bio_guard_bot/91562-629172467.mp4
+    echo "Video file transferred successfully"
+fi
 
 echo "Files transferred successfully (latest version with all button fixes)"
 

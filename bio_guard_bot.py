@@ -150,8 +150,6 @@ async def start_command(message: types.Message):
         kb.button(text="☂ Updates", url="https://t.me/Tele_212_bots")
         kb.adjust(2)
         
-        # Get bot's profile photo
-        photos = await bot.get_user_profile_photos((await bot.get_me()).id)
         start_msg = (
             f"๏ ᴛʜɪs ɪs <a href='https://t.me/{bot_username}'>{BOT_NAME}</a>\n\n"
             f"➻ ᴀ ᴘᴏᴡᴇʀғᴜʟ sᴇᴄᴜʀɪᴛʏ ʙᴏᴛ ᴅᴇsɪɢɴᴇᴅ ᴛᴏ ᴘʀᴏᴛᴇᴄᴛ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ\n"
@@ -160,15 +158,17 @@ async def start_command(message: types.Message):
             f"➻ ᴊᴏɪɴ sᴜᴘᴘᴏʀᴛ ғᴏʀ ᴍᴏʀᴇ ᴜᴘᴅᴀᴛᴇs.🥂"
         )
         
-        if photos.total_count > 0:
-            photo_id = photos.photos[0][0].file_id
-            await message.answer_photo(
-                photo=photo_id,
-                caption=start_msg,
-                reply_markup=kb.as_markup()
-            )
+        # Send video instead of profile picture
+        video_path = "/opt/bio_guard_bot/91562-629172467.mp4"
+        if os.path.exists(video_path):
+            with open(video_path, 'rb') as video_file:
+                await message.answer_video(
+                    video=video_file,
+                    caption=start_msg,
+                    reply_markup=kb.as_markup()
+                )
         else:
-            # No profile picture, send text only
+            # Fallback to text if video not found
             await message.answer(
                 start_msg,
                 reply_markup=kb.as_markup()
