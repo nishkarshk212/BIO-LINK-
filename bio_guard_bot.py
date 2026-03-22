@@ -293,9 +293,9 @@ async def open_settings(message: types.Message):
     # Main settings menu (private chat or when opened directly)
     kb = InlineKeyboardBuilder()
     
-    # Who Can Control section - Top priority
-    control_display = who_can_control.capitalize().replace('_', ' ')
-    kb.button(text=f"👑 Who Can Control: {control_display}", callback_data="who_can_control_menu")
+    # Who Can Control section - Top priority with cycle button
+    control_display = who_can_control.capitalize()
+    kb.button(text=f"👑 Access: {control_display}", callback_data="cycle_who_can_control")
     
     # Main category buttons - Bio Checker and Edit Checker
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
@@ -1344,9 +1344,9 @@ async def back_to_main_settings_callback(call: types.CallbackQuery):
     kb = InlineKeyboardBuilder()
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    control_display = who_can_control.capitalize().replace('_', ' ')
+    control_display = who_can_control.capitalize()
     
-    kb.button(text=f"👑 Who Can Control: {control_display}", callback_data="who_can_control_menu")
+    kb.button(text=f"👑 Access: {control_display}", callback_data="cycle_who_can_control")
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
@@ -1358,53 +1358,28 @@ async def back_to_main_settings_callback(call: types.CallbackQuery):
     )
     await call.answer()
 
-# Who Can Control menu handlers
-@dp.callback_query(lambda c: c.data == "who_can_control_menu")
-async def who_can_control_menu_callback(call: types.CallbackQuery):
-    # Get current setting
+# Who Can Control cycle handler
+@dp.callback_query(lambda c: c.data == "cycle_who_can_control")
+async def cycle_who_can_control_callback(call: types.CallbackQuery):
+    # Cycle through: owner -> admin -> moderator -> owner
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT who_can_control FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             current = row[0] if row else "owner"
+        
+        # Cycle to next option
+        if current == "owner":
+            new_value = "admin"
+        elif current == "admin":
+            new_value = "moderator"
+        else:
+            new_value = "owner"
+        
+        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", (new_value, call.message.chat.id))
+        await db.commit()
     
-    kb = InlineKeyboardBuilder()
-    # Show checkmark for selected option
-    kb.button(text=("✅ " if current == "owner" else "") + "Owner Only", callback_data="control_owner")
-    kb.button(text=("✅ " if current == "admin" else "") + "Admins", callback_data="control_admin")
-    kb.button(text=("✅ " if current == "moderator" else "") + "Moderators", callback_data="control_moderator")
-    kb.button(text="↩️ Back", callback_data="back_to_main_settings")
-    kb.adjust(1)
-    
-    await call.message.edit_text(
-        "👑 <b>Who Can Control Settings</b>\n\n"
-        "Select who can access and modify bot settings:",
-        reply_markup=kb.as_markup()
-    )
-    await call.answer()
-
-@dp.callback_query(lambda c: c.data == "control_owner")
-async def control_owner_callback(call: types.CallbackQuery):
-    async with aiosqlite.connect("bio_guard.db") as db:
-        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", ("owner", call.message.chat.id))
-        await db.commit()
     await back_to_main_settings_callback(call)
-    await call.answer("✅ Settings access: Owner Only")
-
-@dp.callback_query(lambda c: c.data == "control_admin")
-async def control_admin_callback(call: types.CallbackQuery):
-    async with aiosqlite.connect("bio_guard.db") as db:
-        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", ("admin", call.message.chat.id))
-        await db.commit()
-    await back_to_main_settings_callback(call)
-    await call.answer("✅ Settings access: Admins")
-
-@dp.callback_query(lambda c: c.data == "control_moderator")
-async def control_moderator_callback(call: types.CallbackQuery):
-    async with aiosqlite.connect("bio_guard.db") as db:
-        await db.execute("UPDATE settings SET who_can_control=? WHERE chat_id=?", ("moderator", call.message.chat.id))
-        await db.commit()
-    await back_to_main_settings_callback(call)
-    await call.answer("✅ Settings access: Moderators")
+    await call.answer(f"✅ Settings access changed to {new_value.capitalize()}")
 
 @dp.callback_query(lambda c: c.data == "back_to_settings")
 async def back_to_settings_callback(call: types.CallbackQuery):
