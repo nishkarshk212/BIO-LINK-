@@ -821,7 +821,42 @@ async def monitor_edited_message(message: types.Message):
         # Bot needs admin rights with delete permission
         return
     
-    # Update warning count
+    # Check if penalty is "warn only" - don't count warnings
+    if effective_penalty == "warn":
+        # Just send a warning without counting
+        try:
+            warning_msg = await message.answer(
+                f"⚠️ <b>ᴇᴅɪᴛᴛɪɴɢ ɪꜱ ɴᴏᴛ ᴀʟʟᴏᴡᴇᴅ!</b>\n\n"
+                f"<i>ᴘʟᴇᴀsᴇ ᴅᴏ ɴᴏᴛ ᴇᴅɪᴛ ᴍᴇssᴀɢᴇs ɪɴ ᴛʜɪs ɢʀᴏᴜᴘ.</i>"
+            )
+            print(f"✅ Sent warn-only message for edited message to {message.from_user.id}")
+        except Exception as e:
+            print(f"❌ Error sending warning: {e}")
+        
+        # Log the warning
+        await log_activity(
+            event_type="warn",
+            user_id=message.from_user.id,
+            username=message.from_user.username or "Unknown",
+            chat_id=message.chat.id,
+            chat_name=message.chat.title,
+            details=f"Warn only - Edited message"
+        )
+        
+        print(f"✅ Edit checker logged: User {message.from_user.id} warned for editing (warn only, no count)")
+        
+        # Auto-delete warning after 30 seconds
+        async def delete_warning():
+            await asyncio.sleep(30)
+            try:
+                await warning_msg.delete()
+            except:
+                pass
+        
+        asyncio.create_task(delete_warning())
+        return  # Exit early, no warning count added
+    
+    # Update warning count (only if not warn-only)
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", 
                             (message.chat.id, message.from_user.id)) as cur:
@@ -836,7 +871,7 @@ async def monitor_edited_message(message: types.Message):
                                (message.chat.id, message.from_user.id, count))
         await db.commit()
     
-    # Send warning message with buttons
+    # Send warning message with buttons (only if not warn-only)
     kb = InlineKeyboardBuilder()
     kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}_edit")
     kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}_edit")
