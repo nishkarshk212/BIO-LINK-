@@ -576,13 +576,20 @@ async def check_bio(message: types.Message):
         # Debug logging (can be removed in production)
         print(f"User {message.from_user.id} bio: '{bio}'")
         
+        # Check if bio is empty
+        if not bio or len(bio.strip()) == 0:
+            print(f"Bio is empty for user {message.from_user.id}")
+            return
+        
+        # Check for links in bio
         if not bio_pattern.search(bio):
+            print(f"No link pattern found in bio for user {message.from_user.id}")
             return
             
-        print(f"Bio link detected for user {message.from_user.id}")
+        print(f"✅ Bio link detected for user {message.from_user.id}: '{bio}'")
         
     except Exception as e:
-        print(f"Error getting user bio: {e}")
+        print(f"❌ Error getting user bio: {e}")
         return
 
     async with aiosqlite.connect("bio_guard.db") as db:
