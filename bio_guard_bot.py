@@ -593,6 +593,7 @@ async def check_bio(message: types.Message):
         return
 
     async with aiosqlite.connect("bio_guard.db") as db:
+        # Get settings
         async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
@@ -602,142 +603,152 @@ async def check_bio(message: types.Message):
                 limit, penalty, apply_to, bio_checker_enabled = 3, "mute", "members", 1
             else:
                 limit, penalty, apply_to, bio_checker_enabled = row
-    
-    # Check if bio checker is enabled
-    if bio_checker_enabled == 0:
-        return
-    
-    # Check if user should be affected based on settings
-    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    user_status = chat_member.status
-    
-    # Apply filtering based on settings
-    should_apply = False
-    
-    if apply_to == "members":
-        # Only apply to regular members (not admins/creators)
-        if user_status in ["member", "left"]:
-            should_apply = True
-    elif apply_to == "admins":
-        # Only apply to administrators and creators
-        if user_status in ["administrator", "creator"]:
-            should_apply = True
-    elif apply_to == "members_and_admins":
-        # Apply to both members and admins (everyone except left members)
-        if user_status in ["member", "administrator", "creator"]:
-            should_apply = True
-    elif apply_to == "everyone":
-        # Apply to everyone including bots and all statuses
-        should_apply = True
-    
-    # Exit if this setting doesn't apply to this user
-    if not should_apply:
-        print(f"Bio detection skipped for user {message.from_user.id} (status: {user_status}, apply_to: {apply_to})")
-        return
-
-    # Add warning
-    async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
-        row = await cur.fetchone()
-        if row:
-            count = row[0] + 1
-            await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", (count, message.chat.id, message.from_user.id))
-        else:
-            count = 1
-            await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (message.chat.id, message.from_user.id, count))
-    await db.commit()
-
-    # Send warning with custom format and buttons
-    kb = InlineKeyboardBuilder()
-    kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}_bio")
-    kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}_bio")
-    kb.adjust(2)
-    
-    warning_msg = await message.reply(
-        f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
-        f"📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}",
-        reply_markup=kb.as_markup()
-    )
-    
-    # Log the warning
-    await log_activity(
-        event_type="warn",
-        user_id=message.from_user.id,
-        username=message.from_user.username or "Unknown",
-        chat_id=message.chat.id,
-        chat_name=message.chat.title,
-        details=f"Warning {count}/{limit} - Bio contains link"
-    )
-    
-    # Auto-delete warning after 30 seconds (shorter time for better UX)
-    async def delete_warning():
-        await asyncio.sleep(30)
+        
+        # Check if bio checker is enabled
+        if bio_checker_enabled == 0:
+            print(f"Bio checker is disabled for chat {message.chat.id}")
+            return
+        
+        # Check if user should be affected based on settings
         try:
-            await warning_msg.delete()
-        except:
-            pass
-    
-    asyncio.create_task(delete_warning())
-    
-    # Auto-delete bot's own message after 30 seconds
-    async def delete_bot_message():
-        await asyncio.sleep(30)
-        try:
-            await message.delete()
-        except:
-            pass
-    
-    asyncio.create_task(delete_bot_message())
-
-    # Apply penalty if limit reached
-    if count >= limit:
-        bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+            chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+            user_status = chat_member.status
+            
+            # Apply filtering based on settings
+            should_apply = False
+            
+            if apply_to == "members":
+                # Only apply to regular members (not admins/creators)
+                if user_status in ["member", "left"]:
+                    should_apply = True
+            elif apply_to == "admins":
+                # Only apply to administrators and creators
+                if user_status in ["administrator", "creator"]:
+                    should_apply = True
+            elif apply_to == "members_and_admins":
+                # Apply to both members and admins (everyone except left members)
+                if user_status in ["member", "administrator", "creator"]:
+                    should_apply = True
+            elif apply_to == "everyone":
+                # Apply to everyone including bots and all statuses
+                should_apply = True
+            
+            # Exit if this setting doesn't apply to this user
+            if not should_apply:
+                print(f"Bio detection skipped for user {message.from_user.id} (status: {user_status}, apply_to: {apply_to})")
+                return
+        except Exception as e:
+            print(f"Error checking user status: {e}")
+            return
+        
+        # Add warning
+        async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
+            row = await cur.fetchone()
+            if row:
+                count = row[0] + 1
+                await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", (count, message.chat.id, message.from_user.id))
+            else:
+                count = 1
+                await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (message.chat.id, message.from_user.id, count))
+        await db.commit()
+        
+        # Send warning with custom format and buttons
         kb = InlineKeyboardBuilder()
-        kb.adjust(1)
-        action_taken = False
+        kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}_bio")
+        kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}_bio")
+        kb.adjust(2)
         
-        if penalty == "mute" and bot_member.can_restrict_members:
-            await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
-                                         permissions=types.ChatPermissions(can_send_messages=False))
-            kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
-            action_taken = True
-        elif penalty == "kick" and bot_member.can_restrict_members:
-            await bot.ban_chat_member(message.chat.id, message.from_user.id)
-            await bot.unban_chat_member(message.chat.id, message.from_user.id)
-            kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
-            action_taken = True
-        elif penalty == "ban" and bot_member.can_restrict_members:
-            await bot.ban_chat_member(message.chat.id, message.from_user.id)
-            kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
-            action_taken = True
-        
-        if action_taken:
-            action_msg = await message.reply(
-                f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} warnings.",
+        try:
+            warning_msg = await message.reply(
+                f"⚠ ʏᴏᴜʀ ʙɪᴏ ᴄᴏɴᴛᴀɪɴ ʟɪɴᴋ . ᴘʟᴇᴀꜱᴇ ʀᴇᴍᴏᴠᴇ ᴛʜᴇ ʟɪɴᴋ ꜰʀᴏᴍ ʙɪᴏ ᴀɴᴅ ᴛʜᴇɴ ᴍᴇꜱꜱᴀɢᴇ ʜᴇʀᴇ\n\n"
+                f"📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}",
                 reply_markup=kb.as_markup()
             )
+            print(f"✅ Warning sent to user {message.from_user.id}")
+        except Exception as e:
+            print(f"❌ Error sending warning message: {e}")
+            return
+        
+        # Log the warning
+        await log_activity(
+            event_type="warn",
+            user_id=message.from_user.id,
+            username=message.from_user.username or "Unknown",
+            chat_id=message.chat.id,
+            chat_name=message.chat.title,
+            details=f"Warning {count}/{limit} - Bio contains link"
+        )
+        
+        # Auto-delete warning after 30 seconds (shorter time for better UX)
+        async def delete_warning():
+            await asyncio.sleep(30)
+            try:
+                await warning_msg.delete()
+            except:
+                pass
+        
+        asyncio.create_task(delete_warning())
+        
+        # Auto-delete bot's own message after 30 seconds
+        async def delete_bot_message():
+            await asyncio.sleep(30)
+            try:
+                await message.delete()
+            except:
+                pass
+        
+        asyncio.create_task(delete_bot_message())
+
+        # Apply penalty if limit reached
+        if count >= limit:
+            bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+            kb = InlineKeyboardBuilder()
+            kb.adjust(1)
+            action_taken = False
             
-            # Auto-delete penalty success message
-            async def delete_penalty_success():
-                await asyncio.sleep(30)
+            if penalty == "mute" and bot_member.can_restrict_members:
+                await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
+                                             permissions=types.ChatPermissions(can_send_messages=False))
+                kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
+                action_taken = True
+            elif penalty == "kick" and bot_member.can_restrict_members:
+                await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                await bot.unban_chat_member(message.chat.id, message.from_user.id)
+                kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
+                action_taken = True
+            elif penalty == "ban" and bot_member.can_restrict_members:
+                await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
+                action_taken = True
+            
+            if action_taken:
+                action_msg = await message.reply(
+                    f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} warnings.",
+                    reply_markup=kb.as_markup()
+                )
+                
+                # Auto-delete penalty success message
+                async def delete_penalty_success():
+                    await asyncio.sleep(30)
+                    try:
+                        await action_msg.delete()
+                    except:
+                        pass
+                
+                asyncio.create_task(delete_penalty_success())
+            else:
+                action_msg = await message.reply(
+                    f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
+                )
+            
+            async def delete_action():
+                await asyncio.sleep(30)  # Shorter time for better UX
                 try:
                     await action_msg.delete()
                 except:
                     pass
             
-            asyncio.create_task(delete_penalty_success())
-        else:
-            action_msg = await message.reply(
-                f"🚨 <b>User {message.from_user.id}</b> reached {limit} warnings but bot doesn't have permission to {penalty}."
-            )
-        
-        async def delete_action():
-            await asyncio.sleep(30)  # Shorter time for better UX
-            try:
-                await action_msg.delete()
-            except:
-                pass
-        
-        asyncio.create_task(delete_action())
+            asyncio.create_task(delete_action())
 
 # Global ban check logic
 async def check_global_ban(message: types.Message):
