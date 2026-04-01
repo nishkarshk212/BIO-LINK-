@@ -158,26 +158,44 @@ async def start_command(message: types.Message):
             f"➻ ᴊᴏɪɴ sᴜᴘᴘᴏʀᴛ ғᴏʀ ᴍᴏʀᴇ ᴜᴘᴅᴀᴛᴇs.🥂"
         )
         
-        # Send video instead of profile picture
-        video_path = "/opt/bio_guard_bot/91562-629172467.mp4"
-        if os.path.exists(video_path):
-            try:
-                # Use FSInputFile for proper file handling
-                from aiogram.types import FSInputFile
-                video_file = FSInputFile(video_path)
-                await message.answer_video(
-                    video=video_file,
-                    caption=start_msg,
-                    reply_markup=kb.as_markup()
-                )
-            except Exception as video_error:
-                print(f"Error sending video: {video_error}")
-                # Fallback to text if video fails
+        # List of video URLs to choose from randomly
+        import random
+        video_urls = [
+            "https://files.catbox.moe/4ij8ag.mp4",
+            "https://files.catbox.moe/z68nj0.mp4",
+            "https://files.catbox.moe/nl65r9.mp4"
+        ]
+        
+        # Select a random video URL
+        selected_video = random.choice(video_urls)
+        
+        # Send video from URL
+        try:
+            await message.answer_video(
+                video=selected_video,
+                caption=start_msg,
+                reply_markup=kb.as_markup()
+            )
+        except Exception as video_error:
+            print(f"Error sending video {selected_video}: {video_error}")
+            # Try another random video if first one fails
+            remaining_videos = [v for v in video_urls if v != selected_video]
+            for retry_video in remaining_videos:
+                try:
+                    await message.answer_video(
+                        video=retry_video,
+                        caption=start_msg,
+                        reply_markup=kb.as_markup()
+                    )
+                    break
+                except:
+                    continue
+            else:
+                # Fallback to text if all videos fail
                 await message.answer(
                     start_msg,
                     reply_markup=kb.as_markup()
                 )
-        else:
             # Fallback to text if video not found
             await message.answer(
                 start_msg,
