@@ -31,6 +31,9 @@ LOG_CHANNEL_USERNAME = "@music_24345"
 # Store owner's chat ID for automatic notifications
 owner_chat_id = None
 
+# Store chat ID waiting for blocklist warning message
+waiting_for_blocklist_message = None
+
 # Database initialization
 async def init_db():
     async with aiosqlite.connect("bio_guard.db") as db:
@@ -76,6 +79,27 @@ async def init_db():
         try:
             await db.execute("ALTER TABLE settings ADD COLUMN who_can_control TEXT DEFAULT 'owner'")
             print("✅ Added 'who_can_control' column to settings table.")
+        except Exception:
+            pass # Already exists
+        
+        # Add blocklist_penalty column if it doesn't exist
+        try:
+            await db.execute("ALTER TABLE settings ADD COLUMN blocklist_penalty TEXT DEFAULT 'mute'")
+            print("✅ Added 'blocklist_penalty' column to settings table.")
+        except Exception:
+            pass # Already exists
+        
+        # Add blocklist_warn_limit column if it doesn't exist
+        try:
+            await db.execute("ALTER TABLE settings ADD COLUMN blocklist_warn_limit INTEGER DEFAULT 3")
+            print("✅ Added 'blocklist_warn_limit' column to settings table.")
+        except Exception:
+            pass # Already exists
+        
+        # Add blocklist_warning_message column if it doesn't exist
+        try:
+            await db.execute("ALTER TABLE settings ADD COLUMN blocklist_warning_message TEXT DEFAULT 'ᴅᴏɴ''ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ'")
+            print("✅ Added 'blocklist_warning_message' column to settings table.")
         except Exception:
             pass # Already exists
         await db.execute("""
@@ -709,6 +733,39 @@ async def remove_block_command(message: types.Message):
     await message.reply(f"✅ Removed blocklist item #{item_id}")
     await log_activity("block_remove", message.from_user.id, message.from_user.username, message.chat.id, message.chat.title, f"Removed block: {row[0]}")
 
+# Handler for custom blocklist warning message
+@dp.message()
+async def handle_blocklist_warning_message(message: types.Message):
+    """Handle user sending custom warning message for blocklist"""
+    global waiting_for_blocklist_message
+    
+    if waiting_for_blocklist_message is None or message.chat.id != waiting_for_blocklist_message:
+        return
+    
+    if message.chat.type not in ["group", "supergroup"]:
+        return
+    
+    # Check if user is admin/creator
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await message.reply("❌ Only administrators can set warning messages.")
+        return
+    
+    new_message = message.text or ""
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute(
+            "UPDATE settings SET blocklist_warning_message=? WHERE chat_id=?",
+            (new_message, message.chat.id)
+        )
+        await db.commit()
+    
+    waiting_for_blocklist_message = None
+    
+    await message.reply(f"✅ Warning message updated to:\n<i>{new_message}</i>")
+    await log_activity("block_setting_change", message.from_user.id, message.from_user.username, 
+                      message.chat.id, message.chat.title, f"Changed warning message to: {new_message[:50]}")
+
 # Auto-moderation for blocklist
 @dp.message()
 async def check_blocklist(message: types.Message):
@@ -734,8 +791,8 @@ async def check_blocklist(message: types.Message):
         if content_type == "text" and block_content.lower() in text_to_check.lower():
             try:
                 await message.delete()
-                await log_activity("block_trigger", message.from_user.id, message.from_user.username, 
-                                 message.chat.id, message.chat.title, f"Blocked text: {block_content[:30]}")
+                # Give warning and apply penalty
+                await give_blocklist_warning(message, block_content)
             except:
                 pass
             return
@@ -744,8 +801,7 @@ async def check_blocklist(message: types.Message):
         if content_type == "sticker" and message.sticker and message.sticker.file_id == block_content:
             try:
                 await message.delete()
-                await log_activity("block_trigger", message.from_user.id, message.from_user.username,
-                                 message.chat.id, message.chat.title, f"Blocked sticker")
+                await give_blocklist_warning(message, "sticker")
             except:
                 pass
             return
@@ -756,11 +812,99 @@ async def check_blocklist(message: types.Message):
                 if photo.file_id == block_content:
                     try:
                         await message.delete()
-                        await log_activity("block_trigger", message.from_user.id, message.from_user.username,
-                                         message.chat.id, message.chat.title, f"Blocked photo")
+                        await give_blocklist_warning(message, "photo")
                     except:
                         pass
                     return
+
+async def give_blocklist_warning(message: types.Message, blocked_content):
+    """Give warning for blocklist violation with custom message and penalty"""
+    async with aiosqlite.connect("bio_guard.db") as db:
+        # Get blocklist penalty settings
+        async with db.execute("SELECT blocklist_warn_limit, blocklist_penalty, blocklist_warning_message FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                limit, penalty, warning_msg = 3, "mute", "ᴅᴏɴ'ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ"
+            else:
+                limit, penalty, warning_msg = row
+        
+        # Add warning count
+        async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", (message.chat.id, message.from_user.id)) as cur:
+            warn_row = await cur.fetchone()
+            if warn_row:
+                count = warn_row[0] + 1
+                await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", (count, message.chat.id, message.from_user.id))
+            else:
+                count = 1
+                await db.execute("INSERT INTO warns VALUES (?, ?, ?)", (message.chat.id, message.from_user.id, count))
+        await db.commit()
+        
+        # Send warning with custom message
+        kb = InlineKeyboardBuilder()
+        kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}_block")
+        kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}_block")
+        kb.adjust(2)
+        
+        try:
+            warning_msg_formatted = f"⚠ {warning_msg}\n\n📊 ᴡᴀʀɴɪɴɢꜱ: {count}/{limit}"
+            warning_message = await message.reply(warning_msg_formatted, reply_markup=kb.as_markup())
+            
+            # Auto-delete warning after 30 seconds
+            async def delete_warning():
+                await asyncio.sleep(30)
+                try:
+                    await warning_message.delete()
+                except:
+                    pass
+            
+            asyncio.create_task(delete_warning())
+        except Exception as e:
+            print(f"Error sending blocklist warning: {e}")
+        
+        # Log the warning
+        await log_activity("block_warn", message.from_user.id, message.from_user.username, 
+                         message.chat.id, message.chat.title, f"Warning {count}/{limit} - Blocked {blocked_content if isinstance(blocked_content, str) else 'content'}")
+        
+        # Apply penalty if limit reached
+        if count >= limit:
+            bot_member = await bot.get_chat_member(message.chat.id, bot.id)
+            kb_penalty = InlineKeyboardBuilder()
+            kb_penalty.adjust(1)
+            action_taken = False
+            
+            if penalty == "mute" and bot_member.can_restrict_members:
+                await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
+                                             permissions=types.ChatPermissions(can_send_messages=False))
+                kb_penalty.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
+                action_taken = True
+            elif penalty == "kick" and bot_member.can_restrict_members:
+                await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                await bot.unban_chat_member(message.chat.id, message.from_user.id)
+                kb_penalty.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
+                action_taken = True
+            elif penalty == "ban" and bot_member.can_restrict_members:
+                await bot.ban_chat_member(message.chat.id, message.from_user.id)
+                kb_penalty.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
+                action_taken = True
+            
+            if action_taken:
+                try:
+                    action_msg = await message.reply(
+                        f"🚨 <b>User {message.from_user.id}</b> has been {penalty}d after {limit} blocklist violations.",
+                        reply_markup=kb_penalty.as_markup()
+                    )
+                    
+                    # Auto-delete penalty message after 30 seconds
+                    async def delete_penalty_success():
+                        await asyncio.sleep(30)
+                        try:
+                            await action_msg.delete()
+                        except:
+                            pass
+                    
+                    asyncio.create_task(delete_penalty_success())
+                except Exception as e:
+                    print(f"Error applying blocklist penalty: {e}")
 
 # Bio checking logic - Improved detection
 bio_pattern = re.compile(r"(https?://|t\.me/|@\w+|telegram\.me/|t\.me/joinchat/|t\.me/\+|telegram\.dog/)", re.IGNORECASE)
@@ -1248,6 +1392,35 @@ async def edit_checker_menu_callback(call: types.CallbackQuery):
         reply_markup=kb.as_markup()
     )
 
+@dp.callback_query(lambda c: c.data == "blocklist_penalty_menu")
+async def blocklist_penalty_menu_callback(call: types.CallbackQuery):
+    await call.answer("Opening Blocklist Penalty settings...")
+    
+    # Get blocklist penalty settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT blocklist_warn_limit, blocklist_penalty, blocklist_warning_message FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                limit, penalty, warning_msg = 3, "mute", "ᴅᴏɴ'ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ"
+            else:
+                limit, penalty, warning_msg = row
+    
+    kb = InlineKeyboardBuilder()
+    
+    # Blocklist Penalty specific settings
+    kb.button(text=f"⚠ Warn Limit: {limit}", callback_data="change_blocklist_limit")
+    kb.button(text=f"🚨 Penalty: {penalty}", callback_data="change_blocklist_penalty")
+    kb.button(text=f"📝 Warning Message", callback_data="change_blocklist_message")
+    kb.button(text="↩️ Back", callback_data="back_to_main_settings")
+    kb.adjust(2, 1)
+    
+    await call.message.edit_text(
+        "🚫 <b>Blocklist Penalty Settings</b>\n\n"
+        f"Current warning message:\n<i>{warning_msg}</i>\n\n"
+        "Configure penalties for blocked content violations:",
+        reply_markup=kb.as_markup()
+    )
+
 @dp.callback_query(lambda c: c.data == "open_settings_menu")
 async def open_settings_menu_callback(call: types.CallbackQuery):
     # Check if user is group owner
@@ -1260,29 +1433,30 @@ async def open_settings_menu_callback(call: types.CallbackQuery):
     
     # Get current settings
     async with aiosqlite.connect("bio_guard.db") as db:
-        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+        async with db.execute("SELECT warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control, blocklist_penalty, blocklist_warn_limit, blocklist_warning_message FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
             row = await cur.fetchone()
             if not row:
-                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members", "owner"))
+                await db.execute("INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control, blocklist_penalty, blocklist_warn_limit, blocklist_warning_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+                               (call.message.chat.id, 3, "mute", "members", 1, 1, "members", "owner", "mute", 3, "ᴅᴏɴ'ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ"))
                 await db.commit()
-                row = (3, "mute", "members", 1, 1, "members", "owner")
+                row = (3, "mute", "members", 1, 1, "members", "owner", "mute", 3, "ᴅᴏɴ'ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ")
     
-    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control = row
+    limit, penalty, apply_to, bio_checker_enabled, edit_checker, edit_apply_to, who_can_control, blocklist_penalty, blocklist_warn_limit, blocklist_warning_message = row
     kb = InlineKeyboardBuilder()
     
     # Who Can Control section - Top priority with cycle button
     control_display = who_can_control.capitalize()
     kb.button(text=f"👑 Access: {control_display}", callback_data="cycle_who_can_control")
     
-    # Main category buttons - Bio Checker and Edit Checker
+    # Main category buttons - Bio Checker, Edit Checker, and Blocklist Penalty
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
     
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
+    kb.button(text=f"🚫 Blocklist Penalty", callback_data="blocklist_penalty_menu")
     kb.button(text="✔︎ Save & Close", callback_data="save_and_close")
-    kb.adjust(2, 2, 1)
+    kb.adjust(2, 2, 2)
     
     # Delete the original message (works for both text and photo)
     try:
@@ -1357,6 +1531,94 @@ async def set_edit_penalty_callback(call: types.CallbackQuery):
     
     await edit_checker_menu_callback(call)
     await call.answer(f"✅ Edit Penalty set to {penalty}")
+
+# Blocklist Penalty Handlers
+@dp.callback_query(lambda c: c.data == "change_blocklist_limit")
+async def change_blocklist_limit_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    # Custom limit with +/- buttons
+    kb.button(text="▲ Increase", callback_data="blocklist_limit_up")
+    kb.button(text="▼ Decrease", callback_data="blocklist_limit_down")
+    kb.button(text="↩️ Back", callback_data="blocklist_penalty_menu")
+    kb.adjust(2)
+    
+    await call.message.edit_text("⚠ Select Blocklist Warn Limit:", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data == "blocklist_limit_up")
+async def blocklist_limit_up_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT blocklist_warn_limit FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                current_limit = row[0]
+                new_limit = min(current_limit + 1, 10)  # Max 10
+                await db.execute("UPDATE settings SET blocklist_warn_limit=? WHERE chat_id=?", (new_limit, call.message.chat.id))
+                await db.commit()
+                await blocklist_penalty_menu_callback(call)
+            else:
+                await blocklist_penalty_menu_callback(call)
+
+@dp.callback_query(lambda c: c.data == "blocklist_limit_down")
+async def blocklist_limit_down_callback(call: types.CallbackQuery):
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT blocklist_warn_limit FROM settings WHERE chat_id = ?", (call.message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if row:
+                current_limit = row[0]
+                new_limit = max(current_limit - 1, 1)  # Min 1
+                await db.execute("UPDATE settings SET blocklist_warn_limit=? WHERE chat_id=?", (new_limit, call.message.chat.id))
+                await db.commit()
+                await blocklist_penalty_menu_callback(call)
+            else:
+                await blocklist_penalty_menu_callback(call)
+
+@dp.callback_query(lambda c: c.data == "change_blocklist_penalty")
+async def change_blocklist_penalty_callback(call: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    penalties = ["warn", "mute", "kick", "ban"]
+    for penalty in penalties:
+        kb.button(text=penalty.capitalize(), callback_data=f"set_blocklist_penalty_{penalty}")
+    kb.button(text="↩️ Back", callback_data="blocklist_penalty_menu")
+    kb.adjust(2)
+    
+    await call.message.edit_text("🚨 Select Blocklist Penalty:", reply_markup=kb.as_markup())
+    await call.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("set_blocklist_penalty_"))
+async def set_blocklist_penalty_callback(call: types.CallbackQuery):
+    penalty = call.data.split("_")[3]
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET blocklist_penalty=? WHERE chat_id=?", (penalty, call.message.chat.id))
+        await db.commit()
+    
+    await blocklist_penalty_menu_callback(call)
+    await call.answer(f"✅ Blocklist Penalty set to {penalty}")
+
+@dp.callback_query(lambda c: c.data == "change_blocklist_message")
+async def change_blocklist_message_callback(call: types.CallbackQuery):
+    await call.answer("Send me the new warning message")
+    
+    # Set a flag to wait for user input
+    global waiting_for_blocklist_message
+    waiting_for_blocklist_message = call.message.chat.id
+    
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Cancel", callback_data="blocklist_penalty_menu")
+    kb.adjust(1)
+    
+    await call.message.edit_text(
+        "📝 <b>Set Warning Message</b>\n\n"
+        "Send me your custom warning message.\n"
+        "It will be shown when users violate blocklist rules.\n\n"
+        "Example: ᴅᴏɴ'ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ",
+        reply_markup=kb.as_markup()
+    )
+
+@dp.callback_query(lambda c: c.data == "blocklist_penalty_menu")
+async def back_to_blocklist_menu_callback(call: types.CallbackQuery):
+    await blocklist_penalty_menu_callback(call)
 
 @dp.callback_query(lambda c: c.data == "change_penalty")
 async def change_penalty_callback(call: types.CallbackQuery):
