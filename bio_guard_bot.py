@@ -109,6 +109,20 @@ async def init_db():
         )
         """)
         await db.commit()
+        
+        # Blocklist table for banned words/stickers/images
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS blocklist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER,
+            content_type TEXT DEFAULT 'text',
+            content_value TEXT,
+            added_by INTEGER,
+            timestamp TEXT
+        )
+        """)
+        print("✅ Blocklist table created/verified")
+        await db.commit()
 
 # Start command
 @dp.message(Command("start"))
@@ -578,6 +592,175 @@ async def send_to_log_channel(event_type, user_id, username, chat_id, chat_name,
         await bot.send_message(LOG_CHANNEL_ID, log_text)
     except Exception as e:
         print(f"Failed to send to log channel: {e}")
+
+# Blocklist Commands - For all chats
+@dp.message(Command("blocklist"))
+async def blocklist_command(message: types.Message):
+    """Show blocklist for current chat"""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.reply("This command can only be used in groups.")
+        return
+    
+    # Check if user is admin/creator
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await message.reply("❌ Only administrators can use this command.")
+        return
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute(
+            "SELECT content_type, content_value, timestamp FROM blocklist WHERE chat_id = ? ORDER BY id DESC",
+            (message.chat.id,)
+        ) as cur:
+            rows = await cur.fetchall()
+    
+    if not rows:
+        await message.reply("📋 <b>Blocklist is empty</b>\n\nNo blocked items in this group.")
+        return
+    
+    blocklist_text = "📋 <b>Current Blocklist:</b>\n\n"
+    for i, (content_type, content_value, timestamp) in enumerate(rows, 1):
+        emoji = {"text": "📝", "sticker": "🎭", "photo": "🖼️"}.get(content_type, "🚫")
+        display_value = content_value[:50] + "..." if len(content_value) > 50 else content_value
+        blocklist_text += f"{i}. {emoji} {content_type.upper()}: <code>{display_value}</code>\n"
+    
+    await message.reply(blocklist_text)
+
+@dp.message(Command("addblock"))
+async def add_block_command(message: types.Message):
+    """Add item to blocklist"""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.reply("This command can only be used in groups.")
+        return
+    
+    # Check if user is admin/creator
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await message.reply("❌ Only administrators can use this command.")
+        return
+    
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.reply(
+            "❌ Usage:\n"
+            "<code>/addblock text word_to_block</code>\n"
+            "<code>/addblock sticker</code> (reply to sticker)\n"
+            "<code>/addblock photo</code> (reply to photo)"
+        )
+        return
+    
+    content_type = args[1].lower()
+    
+    if content_type not in ["text", "sticker", "photo"]:
+        await message.reply("❌ Invalid type. Use: text, sticker, or photo")
+        return
+    
+    if content_type == "text":
+        content_value = args[2]
+    elif content_type == "sticker" and message.reply_to_message and message.reply_to_message.sticker:
+        content_value = message.reply_to_message.sticker.file_id
+    elif content_type == "photo" and message.reply_to_message and message.reply_to_message.photo:
+        content_value = message.reply_to_message.photo[-1].file_id
+    else:
+        await message.reply(f"❌ For sticker/photo, reply to the message with <code>/addblock {content_type}</code>")
+        return
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute(
+            "INSERT INTO blocklist (chat_id, content_type, content_value, added_by, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (message.chat.id, content_type, content_value, message.from_user.id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        await db.commit()
+    
+    await message.reply(f"✅ Added <code>{content_value[:30]}</code> to blocklist.")
+    await log_activity("block_add", message.from_user.id, message.from_user.username, message.chat.id, message.chat.title, f"Blocked {content_type}: {content_value[:30]}")
+
+@dp.message(Command("removeblock"))
+async def remove_block_command(message: types.Message):
+    """Remove item from blocklist by ID"""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.reply("This command can only be used in groups.")
+        return
+    
+    # Check if user is admin/creator
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await message.reply("❌ Only administrators can use this command.")
+        return
+    
+    args = message.text.split()
+    if len(args) != 2 or not args[1].isdigit():
+        await message.reply("❌ Usage: <code>/removeblock &lt;ID&gt;</code>\nUse /blocklist to see IDs.")
+        return
+    
+    item_id = int(args[1])
+    
+    async with aiosqlite.connect("bio_guard.db") as db:
+        cursor = await db.execute("SELECT content_type, content_value FROM blocklist WHERE chat_id = ? AND id = ?", (message.chat.id, item_id))
+        row = await cursor.fetchone()
+        
+        if not row:
+            await message.reply("❌ Item not found in blocklist.")
+            return
+        
+        await db.execute("DELETE FROM blocklist WHERE chat_id = ? AND id = ?", (message.chat.id, item_id))
+        await db.commit()
+    
+    await message.reply(f"✅ Removed blocklist item #{item_id}")
+    await log_activity("block_remove", message.from_user.id, message.from_user.username, message.chat.id, message.chat.title, f"Removed block: {row[0]}")
+
+# Auto-moderation for blocklist
+@dp.message()
+async def check_blocklist(message: types.Message):
+    """Check messages against blocklist - applies to EVERYONE including owner"""
+    if message.chat.type not in ["group", "supergroup"]:
+        return
+    
+    # Skip if no blocklist for this chat
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT content_type, content_value FROM blocklist WHERE chat_id = ?", (message.chat.id,)) as cur:
+            blocklist_items = await cur.fetchall()
+    
+    if not blocklist_items:
+        return
+    
+    # Check text content
+    text_to_check = message.text or ""
+    if message.caption:
+        text_to_check += "\n" + message.caption
+    
+    for content_type, block_content in blocklist_items:
+        # Check text blocks
+        if content_type == "text" and block_content.lower() in text_to_check.lower():
+            try:
+                await message.delete()
+                await log_activity("block_trigger", message.from_user.id, message.from_user.username, 
+                                 message.chat.id, message.chat.title, f"Blocked text: {block_content[:30]}")
+            except:
+                pass
+            return
+        
+        # Check stickers
+        if content_type == "sticker" and message.sticker and message.sticker.file_id == block_content:
+            try:
+                await message.delete()
+                await log_activity("block_trigger", message.from_user.id, message.from_user.username,
+                                 message.chat.id, message.chat.title, f"Blocked sticker")
+            except:
+                pass
+            return
+        
+        # Check photos
+        if content_type == "photo" and message.photo:
+            for photo in message.photo:
+                if photo.file_id == block_content:
+                    try:
+                        await message.delete()
+                        await log_activity("block_trigger", message.from_user.id, message.from_user.username,
+                                         message.chat.id, message.chat.title, f"Blocked photo")
+                    except:
+                        pass
+                    return
 
 # Bio checking logic - Improved detection
 bio_pattern = re.compile(r"(https?://|t\.me/|@\w+|telegram\.me/|t\.me/joinchat/|t\.me/\+|telegram\.dog/)", re.IGNORECASE)
