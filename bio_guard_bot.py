@@ -529,7 +529,7 @@ async def open_settings(message: types.Message):
     # Main category buttons - Bio Checker, Edit Checker, Self Destruct, and Blocklist Penalty
     bio_status = "ON ✅" if bio_checker_enabled == 1 else "OFF ❌"
     edit_status = "ON ✅" if edit_checker == 1 else "OFF ❌"
-    self_destruct_status = "ON ✅" if 'self_destruct_enabled' in locals() and self_destruct_enabled == 1 else "OFF ❌"
+    self_destruct_status = "ON ✅" if self_destruct_enabled == 1 else "OFF ❌"
     
     kb.button(text=f"🧬 Bio Checker {bio_status}", callback_data="bio_checker_menu")
     kb.button(text=f"✏️ Edit Checker {edit_status}", callback_data="edit_checker_menu")
@@ -539,6 +539,187 @@ async def open_settings(message: types.Message):
     kb.adjust(2, 2, 2)
     
     await message.reply("⚙ <b>Bio Guard Settings</b>", reply_markup=kb.as_markup())
+
+# Self Destruct Command - Quick access to self-destruct settings
+@dp.message(Command("selfdestruct"))
+async def selfdestruct_command(message: types.Message):
+    """Quick toggle for self-destruct feature"""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.reply("❌ This command only works in groups!")
+        return
+    
+    # Check permissions
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT who_can_control FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            who_can_control = row[0] if row else "owner"
+    
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    user_status = chat_member.status
+    
+    allowed = False
+    if who_can_control == "owner":
+        allowed = user_status in ["creator"]
+    elif who_can_control == "admin":
+        allowed = user_status in ["administrator", "creator"]
+    elif who_can_control == "moderator":
+        allowed = True  # Any member can use
+    
+    if not allowed:
+        await message.reply(f"❌ Only {who_can_control} can use this command!")
+        return
+    
+    # Get current self-destruct settings
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT self_destruct_enabled, self_destruct_time FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                # Initialize settings
+                await db.execute("""
+                    INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, bio_checker_enabled, 
+                                        edit_checker, edit_apply_to, edit_penalty, who_can_control,
+                                        blocklist_penalty, blocklist_warn_limit, blocklist_warning_message,
+                                        self_destruct_enabled, self_destruct_time) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (message.chat.id, 3, "mute", "members", 1, 1, "members", "mute", "owner", "mute", 3, "ᴅᴏɴ'ᴛ ᴜꜱᴇ ʙʟᴏᴄᴋ ᴄᴏɴᴛᴇɴᴛ ᴏꜰ ᴛʜɪꜱ ɢʀᴏᴜᴘ", 0, 60))
+                await db.commit()
+                enabled, destruct_time = 0, 60
+            else:
+                enabled, destruct_time = row
+    
+    # Toggle on/off
+    new_enabled = 0 if enabled == 1 else 1
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET self_destruct_enabled=? WHERE chat_id=?", (new_enabled, message.chat.id))
+        await db.commit()
+    
+    status = "enabled" if new_enabled == 1 else "disabled"
+    
+    # Convert time to readable format
+    hours = destruct_time // 3600
+    minutes = (destruct_time % 3600) // 60
+    seconds = destruct_time % 60
+    
+    if hours > 0:
+        time_str = f"{hours}h {minutes}m {seconds}s"
+    elif minutes > 0:
+        time_str = f"{minutes}m {seconds}s"
+    else:
+        time_str = f"{seconds}s"
+    
+    await message.reply(
+        f"💣 <b>Self-Destruct {status.capitalize()}!</b>\n\n"
+        f"⏱️ Timer: <code>{time_str}</code>\n\n"
+        f"<i>All messages will be deleted after this time.</i>\n\n"
+        f"Use /settings to configure timer."
+    )
+
+# Set Self Destruct Timer Command
+@dp.message(Command("setdestruct"))
+async def set_destruct_timer(message: types.Message):
+    """Set self-destruct timer in seconds/minutes/hours"""
+    if message.chat.type not in ["group", "supergroup"]:
+        await message.reply("❌ This command only works in groups!")
+        return
+    
+    # Check permissions
+    async with aiosqlite.connect("bio_guard.db") as db:
+        async with db.execute("SELECT who_can_control FROM settings WHERE chat_id = ?", (message.chat.id,)) as cur:
+            row = await cur.fetchone()
+            who_can_control = row[0] if row else "owner"
+    
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    user_status = chat_member.status
+    
+    allowed = False
+    if who_can_control == "owner":
+        allowed = user_status in ["creator"]
+    elif who_can_control == "admin":
+        allowed = user_status in ["administrator", "creator"]
+    elif who_can_control == "moderator":
+        allowed = True
+    
+    if not allowed:
+        await message.reply(f"❌ Only {who_can_control} can use this command!")
+        return
+    
+    # Parse arguments
+    args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+    
+    if not args:
+        await message.reply(
+            "⏱️ <b>Set Self-Destruct Timer</b>\n\n"
+            "Usage:\n"
+            "<code>/setdestruct 30</code> - 30 seconds\n"
+            "<code>/setdestruct 5m</code> - 5 minutes\n"
+            "<code>/setdestruct 1h</code> - 1 hour\n"
+            "<code>/setdestruct 2h30m</code> - 2 hours 30 minutes\n\n"
+            "Range: 1 second to 24 hours"
+        )
+        return
+    
+    # Parse time string (supports formats like: 30, 5m, 1h, 2h30m, 1h30m15s)
+    time_str = args[0].lower()
+    total_seconds = 0
+    
+    import re
+    
+    # Try to parse complex format (1h30m15s)
+    match = re.match(r'(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$', time_str)
+    if match and any(match.groups()):
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        total_seconds = hours * 3600 + minutes * 60 + seconds
+    else:
+        # Try simple number (assumed seconds)
+        try:
+            # Check if it's a number with suffix
+            if time_str.endswith('s'):
+                total_seconds = int(time_str[:-1])
+            elif time_str.endswith('m'):
+                total_seconds = int(time_str[:-1]) * 60
+            elif time_str.endswith('h'):
+                total_seconds = int(time_str[:-1]) * 3600
+            else:
+                total_seconds = int(time_str)
+        except ValueError:
+            await message.reply("❌ Invalid time format! Use numbers or formats like: 30, 5m, 1h, 2h30m")
+            return
+    
+    # Validate range (1 second to 24 hours)
+    if total_seconds < 1:
+        await message.reply("❌ Timer must be at least 1 second!")
+        return
+    
+    if total_seconds > 86400:  # 24 hours
+        await message.reply("❌ Timer cannot exceed 24 hours (86400 seconds)!")
+        return
+    
+    # Update database
+    async with aiosqlite.connect("bio_guard.db") as db:
+        await db.execute("UPDATE settings SET self_destruct_time=?, self_destruct_enabled=1 WHERE chat_id=?", (total_seconds, message.chat.id))
+        await db.commit()
+    
+    # Convert to readable format
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    
+    if hours > 0:
+        time_display = f"{hours}h {minutes}m {seconds}s"
+    elif minutes > 0:
+        time_display = f"{minutes}m {seconds}s"
+    else:
+        time_display = f"{seconds}s"
+    
+    await message.reply(
+        f"✅ <b>Timer Set Successfully!</b>\n\n"
+        f"⏱️ Self-destruct timer: <code>{time_display}</code>\n"
+        f"💣 Status: <b>ENABLED</b>\n\n"
+        f"<i>All messages will be automatically deleted after this time.</i>\n\n"
+        f"Use /selfdestruct to toggle on/off."
+    )
 
 # Logs command - Owner only (@Jayden_212)
 @dp.message(Command("logs"))
