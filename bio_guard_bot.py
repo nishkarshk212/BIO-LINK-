@@ -5,7 +5,7 @@ import os
 import random
 from datetime import datetime
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -504,13 +504,22 @@ register_nsfw_handlers(dp, bot, nsfw_detector)
 # Monitor new chat members for NSFW profile content
 @dp.chat_member()
 async def monitor_new_members(chat_member: types.ChatMemberUpdated):
-    """Check new members' profiles for NSFW content"""
+    """Check new members' profiles for NSFW content via chat_member update"""
     if chat_member.chat.type not in ["group", "supergroup"]:
         return
     
     # Only check when user joins (status changed to member)
     if chat_member.new_chat_member.status == "member" and chat_member.old_chat_member.status != "member":
         await nsfw_detector.check_user_profile(chat_member, bot, LOG_CHANNEL_ID)
+
+@dp.message(F.new_chat_members)
+async def monitor_new_members_message(message: types.Message):
+    """Check new members' profiles for NSFW content via service message (fallback)"""
+    if not message.new_chat_members:
+        return
+        
+    for user in message.new_chat_members:
+        await nsfw_detector.check_user(user, message.chat, bot, LOG_CHANNEL_ID)
 
 # Admin commands for NSFW word management
 @dp.message(Command("addword"))

@@ -225,42 +225,11 @@ class NSFWDetector:
         return (keyword_detected or regex_detected or ai_detected), category_details
     
     async def check_message(self, message: types.Message, bot, log_channel_id=""):
-        """Check a message for NSFW content"""
+        """Check a message and user profile for NSFW content"""
         if message.chat.type not in ["group", "supergroup"]:
             return
         
-        # Get message text
-        text = message.text or message.caption or ""
-        
-        nsfw_detected, category_details = await self.contains_nsfw(text)
-        
-        if not nsfw_detected:
-            return
-        
-        print(f"🚫 NSFW content detected from user {message.from_user.id}")
-        
-        # Send detailed log to log channel if configured
-        if log_channel_id and category_details:
-            try:
-                log_msg = f"""
-🚨 <b>Harmful Text Detected</b>
-
-👤 <b>User:</b> {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)
-💬 <b>Message:</b> {text[:500]}
-
-📊 <b>AI Detection Categories:</b>
-• Sexual: {category_details['sexual']}
-• Violence: {category_details['violence']}
-• Hate: {category_details['hate']}
-• Harassment: {category_details['harassment']}
-• Self-harm: {category_details['self_harm']}
-• Drugs/Illicit: {category_details['illicit']}
-"""
-                await bot.send_message(log_channel_id, log_msg)
-            except Exception as e:
-                print(f"Failed to send log: {e}")
-        
-        # Get settings
+        # Get settings first to see what to check
         async with aiosqlite.connect("bio_guard.db") as db:
             async with db.execute("""
                 SELECT warn_limit, penalty, apply_to, nsfw_checker_enabled,
@@ -269,40 +238,80 @@ class NSFWDetector:
             """, (message.chat.id,)) as cur:
                 row = await cur.fetchone()
                 if not row:
-                    # Create default settings with NSFW columns
-                    await db.execute("""
-                        INSERT INTO settings (chat_id, warn_limit, penalty, apply_to, edit_checker,
-                                            bio_apply_to, bio_penalty, edit_apply_to, edit_penalty,
-                                            bio_checker_enabled, nsfw_checker_enabled, nsfw_apply_to, nsfw_penalty,
-                                            nsfw_check_name, nsfw_check_username, nsfw_check_bio, nsfw_check_messages) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (message.chat.id, 3, "mute", "members", 1, "members", "mute", "members", "mute", 1, 1, "members", "mute", 1, 1, 1, 1))
-                    await db.commit()
                     limit, penalty, apply_to, nsfw_enabled, nsfw_apply_to, nsfw_penalty, nsfw_check_name, nsfw_check_username, nsfw_check_bio, nsfw_check_messages = 3, "mute", "members", 1, "members", "mute", 1, 1, 1, 1
                 else:
-                    # Handle case where NSFW columns might not exist yet
                     if len(row) == 10:
                         limit, penalty, apply_to, nsfw_enabled, nsfw_apply_to, nsfw_penalty, nsfw_check_name, nsfw_check_username, nsfw_check_bio, nsfw_check_messages = row
                     elif len(row) == 9:
                         limit, penalty, apply_to, nsfw_enabled, nsfw_apply_to, nsfw_penalty, nsfw_check_name, nsfw_check_username, nsfw_check_bio = row
                         nsfw_check_messages = 1
-                    elif len(row) == 6:
-                        # Old schema without new NSFW columns
-                        limit, penalty, apply_to, nsfw_enabled, nsfw_apply_to, nsfw_penalty = row
-                        nsfw_check_name, nsfw_check_username, nsfw_check_bio, nsfw_check_messages = 1, 1, 1, 1
                     else:
-                        # Very old schema
-                        limit, penalty, apply_to, nsfw_enabled = row[0], row[1], row[2], 1
+                        limit, penalty, apply_to, nsfw_enabled = row[0], row[1], row[2], row[3]
                         nsfw_apply_to, nsfw_penalty = "members", "mute"
                         nsfw_check_name, nsfw_check_username, nsfw_check_bio, nsfw_check_messages = 1, 1, 1, 1
         
         # Check if NSFW checker is enabled
         if nsfw_enabled == 0:
             return
+            
+        texts_to_check = []
         
-        # Check if message scanning is enabled
-        if nsfw_check_messages == 0:
+        # 1. Check message text
+        if nsfw_check_messages == 1:
+            text = message.text or message.caption or ""
+            if text:
+                texts_to_check.append(("content", text))
+        
+        # 2. Check user's name
+        if nsfw_check_name == 1:
+            full_name = f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip()
+            if full_name:
+                texts_to_check.append(("name", full_name))
+        
+        # 3. Check user's username
+        if nsfw_check_username == 1 and message.from_user.username:
+            texts_to_check.append(("username", f"@{message.from_user.username}"))
+            
+        # Perform checks
+        nsfw_detected = False
+        detected_type = ""
+        detected_text = ""
+        final_category_details = None
+        
+        for text_type, text in texts_to_check:
+            is_nsfw, category_details = await self.contains_nsfw(text)
+            if is_nsfw:
+                nsfw_detected = True
+                detected_type = text_type
+                detected_text = text
+                final_category_details = category_details
+                break
+                
+        if not nsfw_detected:
             return
+        
+        print(f"🚫 NSFW {detected_type} detected from user {message.from_user.id}")
+        
+        # Send detailed log to log channel if configured
+        if log_channel_id and final_category_details:
+            try:
+                log_msg = f"""
+🚨 <b>Harmful {detected_type.title()} Detected</b>
+
+👤 <b>User:</b> {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)
+💬 <b>Detected {detected_type.title()}:</b> {detected_text[:500]}
+
+📊 <b>AI Detection Categories:</b>
+• Sexual: {final_category_details['sexual']}
+• Violence: {final_category_details['violence']}
+• Hate: {final_category_details['hate']}
+• Harassment: {final_category_details['harassment']}
+• Self-harm: {final_category_details['self_harm']}
+• Drugs/Illicit: {final_category_details['illicit']}
+"""
+                await bot.send_message(log_channel_id, log_msg)
+            except Exception as e:
+                print(f"Failed to send log: {e}")
         
         # Check if user should be affected based on nsfw_apply_to setting
         chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
@@ -340,16 +349,16 @@ class NSFWDetector:
                                    (message.chat.id, message.from_user.id, count))
             await db.commit()
         
-        # Show warning message (only buttons if penalty is not "warn")
+        # Show warning message
         kb = InlineKeyboardBuilder()
         if nsfw_penalty != "warn":
             kb.button(text="ʀᴇᴍᴏᴠᴇ ᴡᴀʀɴ ✖︎", callback_data=f"remove_warn_{message.from_user.id}")
             kb.button(text="ʀᴇꜱᴇᴛ ᴡᴀʀɴ ✖︎", callback_data=f"reset_warn_{message.from_user.id}")
             kb.adjust(2)
         
-        warning_text = Fonts.mono_upper("NSFW content detected!")
+        warning_text = Fonts.mono_upper(f"NSFW {detected_type} detected!")
         warning_msg = await message.reply(
-            f"🚫 {warning_text}\n{Fonts.mono_upper('Inappropriate content is not allowed')}",
+            f"🚫 {warning_text}\n{Fonts.mono_upper(f'Inappropriate {detected_type} is not allowed')}",
             reply_markup=kb.as_markup() if nsfw_penalty != "warn" else None
         )
         
@@ -378,8 +387,6 @@ class NSFWDetector:
             
             if nsfw_penalty == "warn":
                 action_taken = True
-                # Don't send warning message when penalty is warn
-                # Just increment the warning count silently
             elif nsfw_penalty == "mute" and bot_member.can_restrict_members:
                 await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
                                              permissions=types.ChatPermissions(can_send_messages=False))
@@ -416,12 +423,19 @@ class NSFWDetector:
                 )
     
     async def check_user_profile(self, chat_member: types.ChatMemberUpdated, bot, log_channel_id=""):
-        """Check user's name, username, and bio for NSFW content when they join"""
-        if chat_member.chat.type not in ["group", "supergroup"]:
+        """Check user's name, username, and bio for NSFW content via ChatMemberUpdated"""
+        return await self.check_user(
+            chat_member.new_chat_member.user, 
+            chat_member.chat, 
+            bot, 
+            log_channel_id,
+            chat_member.new_chat_member.status
+        )
+
+    async def check_user(self, user: types.User, chat: types.Chat, bot, log_channel_id="", user_status="member"):
+        """Generic method to check user's name, username, and bio for NSFW content"""
+        if chat.type not in ["group", "supergroup"]:
             return
-        
-        # Get the new member
-        user = chat_member.new_chat_member.user
         
         # Get settings
         async with aiosqlite.connect("bio_guard.db") as db:
@@ -429,7 +443,7 @@ class NSFWDetector:
                 SELECT warn_limit, penalty, apply_to, nsfw_checker_enabled,
                        nsfw_apply_to, nsfw_penalty, nsfw_check_name, nsfw_check_username, nsfw_check_bio
                 FROM settings WHERE chat_id = ?
-            """, (chat_member.chat.id,)) as cur:
+            """, (chat.id,)) as cur:
                 row = await cur.fetchone()
                 if not row:
                     return
@@ -492,8 +506,6 @@ class NSFWDetector:
                         print(f"Failed to send log: {e}")
                 
                 # Check if user should be affected based on nsfw_apply_to setting
-                user_status = chat_member.new_chat_member.status
-                
                 should_apply = False
                 
                 if nsfw_apply_to == "members":
@@ -514,16 +526,16 @@ class NSFWDetector:
                 # Increment warning count
                 async with aiosqlite.connect("bio_guard.db") as db:
                     async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", 
-                                        (chat_member.chat.id, user.id)) as cur:
+                                        (chat.id, user.id)) as cur:
                         row = await cur.fetchone()
                         if row:
                             count = row[0] + 1
                             await db.execute("UPDATE warns SET count=? WHERE chat_id=? AND user_id=?", 
-                                           (count, chat_member.chat.id, user.id))
+                                           (count, chat.id, user.id))
                         else:
                             count = 1
                             await db.execute("INSERT INTO warns VALUES (?, ?, ?)", 
-                                           (chat_member.chat.id, user.id, count))
+                                           (chat.id, user.id, count))
                     await db.commit()
                 
                 # Show warning message
@@ -534,7 +546,7 @@ class NSFWDetector:
                     kb.adjust(2)
                 
                 warning_text = Fonts.mono_upper(f"NSFW {text_type} detected!")
-                warning_msg = await chat_member.chat.send_message(
+                warning_msg = await chat.send_message(
                     f"🚫 {warning_text}\n{Fonts.mono_upper(f'Inappropriate {text_type} is not allowed')}",
                     reply_markup=kb.as_markup() if nsfw_penalty != "warn" else None
                 )
@@ -551,47 +563,45 @@ class NSFWDetector:
                 
                 # Apply penalty if warning limit reached
                 if count >= limit:
-                    bot_member = await bot.get_chat_member(chat_member.chat.id, bot.id)
+                    bot_member = await bot.get_chat_member(chat.id, bot.id)
                     penalty_kb = InlineKeyboardBuilder()
                     penalty_kb.adjust(1)
                     action_taken = False
                     
                     if nsfw_penalty == "warn":
                         action_taken = True
-                        # Don't send warning message when penalty is warn
-                        # Just increment the warning count silently
                     elif nsfw_penalty == "mute" and bot_member.can_restrict_members:
-                        await bot.restrict_chat_member(chat_member.chat.id, user.id, 
+                        await bot.restrict_chat_member(chat.id, user.id, 
                                                      permissions=types.ChatPermissions(can_send_messages=False))
                         penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{user.id}")
                         action_taken = True
                         penalty_text = Fonts.mono_upper("Muted!")
-                        await chat_member.chat.send_message(
+                        await chat.send_message(
                             f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                             reply_markup=penalty_kb.as_markup()
                         )
                     elif nsfw_penalty == "kick" and bot_member.can_restrict_members:
-                        await bot.ban_chat_member(chat_member.chat.id, user.id)
-                        await bot.unban_chat_member(chat_member.chat.id, user.id)
+                        await bot.ban_chat_member(chat.id, user.id)
+                        await bot.unban_chat_member(chat.id, user.id)
                         penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{user.id}")
                         action_taken = True
                         penalty_text = Fonts.mono_upper("Kicked!")
-                        await chat_member.chat.send_message(
+                        await chat.send_message(
                             f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                             reply_markup=penalty_kb.as_markup()
                         )
                     elif nsfw_penalty == "ban" and bot_member.can_restrict_members:
-                        await bot.ban_chat_member(chat_member.chat.id, user.id)
+                        await bot.ban_chat_member(chat.id, user.id)
                         penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{user.id}")
                         action_taken = True
                         penalty_text = Fonts.mono_upper("Banned!")
-                        await chat_member.chat.send_message(
+                        await chat.send_message(
                             f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                             reply_markup=penalty_kb.as_markup()
                         )
                     
                     if not action_taken and nsfw_penalty != "warn":
-                        await chat_member.chat.send_message(
+                        await chat.send_message(
                             f"🚨 {Fonts.mono_upper(f'User reached {limit} warnings')}\n{Fonts.mono_upper('Bot needs admin permission')}"
                         )
                     
