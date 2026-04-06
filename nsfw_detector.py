@@ -272,6 +272,16 @@ class NSFWDetector:
         if nsfw_check_username == 1 and message.from_user.username:
             texts_to_check.append(("username", f"@{message.from_user.username}"))
             
+        # 4. Check user's bio
+        if nsfw_check_bio == 1:
+            try:
+                chat_full = await bot.get_chat(message.from_user.id)
+                bio_text = chat_full.bio or chat_full.description or ""
+                if bio_text:
+                    texts_to_check.append(("bio", bio_text))
+            except Exception as e:
+                print(f"Could not fetch user bio in check_message: {e}")
+            
         # Perform checks
         nsfw_detected = False
         detected_type = ""
