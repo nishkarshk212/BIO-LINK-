@@ -600,7 +600,7 @@ async def main():
     print("✅ Bio Guard Bot started with font styling!")
     ai_status = "Enabled" if OPENAI_API_KEY else "Disabled"
     print(f"🛡️ Features: Bio Detection + Edit Message Deletion + NSFW Detection (AI: {ai_status})")
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, allowed_updates=["message", "edited_message", "chat_member", "callback_query"])
 
 if __name__ == "__main__":
     asyncio.run(main())

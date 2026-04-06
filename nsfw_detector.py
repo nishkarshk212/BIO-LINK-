@@ -162,8 +162,9 @@ class NSFWDetector:
         text_lower = clean_text.lower()
         
         for keyword in self.nsfw_keywords:
-            pattern = rf"\b{re.escape(keyword)}\b"
-            if re.search(pattern, text_lower):
+            # Check for exact word OR if the keyword is part of a longer string 
+            # (common for bypassing filters like "sex123" or "hotsex")
+            if keyword in text_lower:
                 return True
         return False
     
@@ -445,8 +446,10 @@ class NSFWDetector:
         # Collect texts to check based on settings
         texts_to_check = []
         
-        if nsfw_check_name == 1 and user.first_name:
-            texts_to_check.append(("name", user.first_name))
+        if nsfw_check_name == 1:
+            full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+            if full_name:
+                texts_to_check.append(("name", full_name))
         
         if nsfw_check_username == 1 and user.username:
             texts_to_check.append(("username", f"@{user.username}"))
