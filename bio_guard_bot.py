@@ -90,7 +90,7 @@ async def start_command(message: types.Message):
         
         kb.button(text="✚ Add To Group", url=f"https://t.me/{bot_username}?startgroup=true")
         kb.button(text="♛ Owner", url=OWNER_URL)
-        kb.button(text="⚙ Settings", callback_data="open_settings_menu")
+        kb.button(text="⚙ Setting", callback_data="open_settings_menu")
         kb.adjust(2)
         
         # Select random video from START_IMG_URL
@@ -112,14 +112,14 @@ async def start_command(message: types.Message):
         kb = InlineKeyboardBuilder()
         kb.button(text="✚ Add To Group", url="https://t.me/your_bot_username?startgroup=true")
         kb.button(text="♛ Owner", url=OWNER_URL)
-        kb.button(text="⚙ Settings", callback_data="open_settings_menu")
+        kb.button(text="⚙ Setting", callback_data="open_settings_menu")
         kb.adjust(2)
         welcome_text = Fonts.mono_upper(BOT_NAME)
         await message.answer(f"🛡️ <b>{welcome_text}</b>\n\nBot is running!", reply_markup=kb.as_markup())
 
 # Settings command - uses new SettingsPanel
-@dp.message(Command("settings"))
-async def open_settings(message: types.Message):
+@dp.message(Command("setting"))
+async def open_setting(message: types.Message):
     if message.chat.type in ["group", "supergroup"]:
         chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
         

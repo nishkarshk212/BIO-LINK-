@@ -78,8 +78,8 @@ async def start_command(message: types.Message):
     )
 
 # Settings command
-@dp.message(Command("settings"))
-async def open_settings(message: types.Message):
+@dp.message(Command("setting"))
+async def open_setting(message: types.Message):
     if not message.chat.type == "private":
         await message.reply("❌ Settings only available in private chat.")
         return

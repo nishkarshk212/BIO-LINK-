@@ -30,7 +30,7 @@ A Telegram bot that monitors user bios for links and contact information, warnin
 
 2. Add the bot to your Telegram group with admin rights
 
-3. Use `/settings` command in the group to configure the bot settings:
+3. Use `/setting` command in the group to configure the bot settings:
    - Warning limit (1, 2, 3, or 5 warnings before penalty)
    - Penalty type (mute, kick, or ban)
    - Apply to (members, admins, or everyone)
@@ -48,4 +48,4 @@ The bot uses SQLite to store settings and warning counts persistently. The datab
 
 ## Commands
 
-- `/settings` - Open the settings panel (only available to group owners)
+- `/setting` - Open the settings panel (only available to group owners)
