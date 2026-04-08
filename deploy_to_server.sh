@@ -1,18 +1,26 @@
 #!/bin/bash
 
 # Deployment Script for Bio Guard Bot
-# Server: 161.118.250.195
+# Server connection settings
 
-SERVER_IP="161.118.250.195"
-SERVER_USER="root"
-SERVER_PORT="22"
+SERVER_IP="${SERVER_IP:-161.118.250.195}"
+SERVER_USER="${SERVER_USER:-root}"
+SERVER_PORT="${SERVER_PORT:-22}"
+# SSH key path (set SSH_KEY_PATH env to override). Falls back to ~/.ssh/id_rsa if present.
+SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
+# Common SSH options
+SSH_OPTS="-p ${SERVER_PORT} -o StrictHostKeyChecking=no"
+# Append key option only if key file exists
+if [ -f "${SSH_KEY_PATH}" ]; then
+  SSH_OPTS="${SSH_OPTS} -i ${SSH_KEY_PATH}"
+fi
 REMOTE_DIR="/root/bio-guard-bot"
 
 echo "🚀 Starting deployment to $SERVER_IP..."
 
 # Step 1: Connect to server and setup environment
 echo "📦 Setting up server environment..."
-ssh -p $SERVER_PORT ${SERVER_USER}@${SERVER_IP} << 'EOF'
+ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_IP} << 'EOF'
     # Update system
     apt-get update -y
     apt-get install -y python3 python3-pip python3-venv git screen
