@@ -26,6 +26,20 @@ dp = Dispatcher()
 # Owner username
 # Moved to config.py
 
+# Owner notification helper
+async def notify_owner(message: str):
+    """Send notification message to owner"""
+    try:
+        # Get owner's user ID from username
+        owner_chat = await bot.get_chat(OWNER_USERNAME)
+        await bot.send_message(
+            chat_id=owner_chat.id,
+            text=message,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"Failed to notify owner: {e}")
+
 # Database initialization
 async def init_db():
     async with aiosqlite.connect("bio_guard.db") as db:
@@ -76,6 +90,14 @@ async def init_db():
         )
         """)
         await db.commit()
+        
+    # Notify owner that bot started
+    await notify_owner(
+        f"✅ <b>Bio Guard Bot Started</b>\n"
+        f"🕒 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"🛡️ Status: Online and monitoring\n"
+        f"🔧 Features: Bio Detection + Edit Message Deletion + NSFW Detection"
+    )
 
 # Start command with styled text
 @dp.message(Command("start"))
@@ -267,6 +289,15 @@ async def check_bio(message: types.Message):
                 reply_markup=kb.as_markup()
             )
             
+            # Notify owner
+            await notify_owner(
+                f"🚨 <b>Bio Link Penalty Applied</b>\n"
+                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
+                f"⚡ Action: {penalty.capitalize()}\n"
+                f"⚠️ Warnings: {count}/{limit}"
+            )
+            
             async def delete_penalty():
                 await asyncio.sleep(30)
                 try:
@@ -334,12 +365,20 @@ async def monitor_edited_message(message: types.Message):
     if not should_apply:
         return
     
+    # Notify owner about edited message
+    await notify_owner(
+        f"✏️ <b>Edited Message Detected</b>\n"
+        f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+        f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
+        f"📄 Message: {message.text or message.caption or 'Media/Non-text'[:100]}"
+    )
+    
     try:
         await message.delete()
         print(f"✅ Deleted edited message from user {message.from_user.id}")
     except Exception as e:
         print(f"❌ Error deleting edited message: {e}")
-        return
+        # Still continue to warn even if delete fails
     
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", 
@@ -364,8 +403,10 @@ async def monitor_edited_message(message: types.Message):
     
     try:
         edit_warning = Fonts.mono_upper("Editing not allowed!")
-        warning_msg = await message.answer(
-            f"📢 {edit_warning}\n{Fonts.mono_upper('Message editing is disabled')}",
+        # For edited messages, we need to send to chat, not reply to the edited message
+        warning_msg = await bot.send_message(
+            chat_id=message.chat.id,
+            text=f"📢 {edit_warning}\n{Fonts.mono_upper('Message editing is disabled')}",
             reply_markup=kb.as_markup() if penalty != "warn" else None
         )
     except Exception as e:
@@ -391,16 +432,29 @@ async def monitor_edited_message(message: types.Message):
             # Just warn, no action needed
             action_taken = True
             penalty_text = Fonts.mono_upper("Warned!")
-            await message.answer(f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}")
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}"
+            )
         elif penalty == "mute" and bot_member.can_restrict_members:
             await bot.restrict_chat_member(message.chat.id, message.from_user.id, 
                                          permissions=types.ChatPermissions(can_send_messages=False))
             penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{message.from_user.id}")
             action_taken = True
             penalty_text = Fonts.mono_upper("Muted!")
-            await message.answer(
-                f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                 reply_markup=penalty_kb.as_markup()
+            )
+            
+            # Notify owner
+            await notify_owner(
+                f"🚨 <b>Edit Message Penalty Applied</b>\n"
+                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
+                f"⚡ Action: Muted\n"
+                f"⚠️ Warnings: {count}/{limit}"
             )
         elif penalty == "kick" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
@@ -408,23 +462,44 @@ async def monitor_edited_message(message: types.Message):
             penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{message.from_user.id}")
             action_taken = True
             penalty_text = Fonts.mono_upper("Kicked!")
-            await message.answer(
-                f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                 reply_markup=penalty_kb.as_markup()
+            )
+            
+            # Notify owner
+            await notify_owner(
+                f"🚨 <b>Edit Message Penalty Applied</b>\n"
+                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
+                f"⚡ Action: Kicked\n"
+                f"⚠️ Warnings: {count}/{limit}"
             )
         elif penalty == "ban" and bot_member.can_restrict_members:
             await bot.ban_chat_member(message.chat.id, message.from_user.id)
             penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{message.from_user.id}")
             action_taken = True
             penalty_text = Fonts.mono_upper("Banned!")
-            await message.answer(
-                f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                 reply_markup=penalty_kb.as_markup()
+            )
+            
+            # Notify owner
+            await notify_owner(
+                f"🚨 <b>Edit Message Penalty Applied</b>\n"
+                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
+                f"⚡ Action: Banned\n"
+                f"⚠️ Warnings: {count}/{limit}"
             )
         
         if not action_taken and penalty != "warn":
-            await message.answer(
-                f"🚨 {Fonts.mono_upper(f'User reached {limit} warnings')}\n{Fonts.mono_upper('Bot needs admin permission')}"
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"🚨 {Fonts.mono_upper(f'User reached {limit} warnings')}\n{Fonts.mono_upper('Bot needs admin permission')}"
             )
 
 # Remove single warning handler
@@ -437,6 +512,12 @@ async def remove_warn_handler(call: types.CallbackQuery):
     if chat_member.status not in ["administrator", "creator"]:
         await call.answer("❌ Only admins can remove warnings!", show_alert=True)
         return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to remove warnings!", show_alert=True)
+            return
     
     async with aiosqlite.connect("bio_guard.db") as db:
         async with db.execute("SELECT count FROM warns WHERE chat_id=? AND user_id=?", 
@@ -476,6 +557,12 @@ async def reset_warn_handler(call: types.CallbackQuery):
         await call.answer("❌ Only admins can reset warnings!", show_alert=True)
         return
     
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to reset warnings!", show_alert=True)
+            return
+    
     async with aiosqlite.connect("bio_guard.db") as db:
         await db.execute("DELETE FROM warns WHERE chat_id=? AND user_id=?", 
                         (call.message.chat.id, user_id))
@@ -493,6 +580,91 @@ async def reset_warn_handler(call: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data == "noop")
 async def noop_handler(call: types.CallbackQuery):
     await call.answer()
+
+# Unmute user handler - Admin only with permission
+@dp.callback_query(lambda c: c.data.startswith("unmute_"))
+async def unmute_user(call: types.CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    
+    # Check if caller is admin
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can unmute users!", show_alert=True)
+        return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to unmute users!", show_alert=True)
+            return
+    
+    try:
+        await bot.restrict_chat_member(
+            chat_id=call.message.chat.id,
+            user_id=user_id,
+            permissions=types.ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True,
+                can_change_info=True,
+                can_invite_users=True,
+                can_pin_messages=True
+            )
+        )
+        await call.answer(f"✅ User {user_id} unmuted successfully!")
+        await call.message.delete()
+    except Exception as e:
+        await call.answer(f"Error unmuting user: {str(e)}", show_alert=True)
+
+# Unban user handler - Admin only with permission
+@dp.callback_query(lambda c: c.data.startswith("unban_"))
+async def unban_user(call: types.CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    
+    # Check if caller is admin
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can unban users!", show_alert=True)
+        return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to unban users!", show_alert=True)
+            return
+    
+    try:
+        await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
+        await call.answer(f"🔓 User {user_id} unbanned successfully!")
+        await call.message.delete()
+    except Exception as e:
+        await call.answer(f"Error unbanning user: {str(e)}", show_alert=True)
+
+# Re-add user handler - Admin only with permission
+@dp.callback_query(lambda c: c.data.startswith("readd_"))
+async def readd_user(call: types.CallbackQuery):
+    user_id = int(call.data.split("_")[1])
+    
+    # Check if caller is admin
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can re-add users!", show_alert=True)
+        return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to re-add users!", show_alert=True)
+            return
+    
+    try:
+        await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
+        await call.answer(f"🔄 User {user_id} can be re-added to the group!")
+        await call.message.delete()
+    except Exception as e:
+        await call.answer(f"Error re-adding user: {str(e)}", show_alert=True)
 
 # Register settings handlers
 register_settings_handlers(dp, bot)

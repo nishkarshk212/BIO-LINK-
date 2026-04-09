@@ -334,9 +334,24 @@ async def back_to_settings_callback(call: types.CallbackQuery):
 async def save_and_close_callback(call: types.CallbackQuery):
     await call.message.delete()
     await call.answer("✅ Settings saved and closed!")
+
+# Unmute user handler - Admin only with permission
 @dp.callback_query(lambda c: c.data.startswith("unmute_"))
 async def unmute_user(call: types.CallbackQuery):
     user_id = int(call.data.split("_")[1])
+    
+    # Check if caller is admin
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can unmute users!", show_alert=True)
+        return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to unmute users!", show_alert=True)
+            return
+    
     try:
         await bot.restrict_chat_member(
             chat_id=call.message.chat.id,
@@ -357,9 +372,23 @@ async def unmute_user(call: types.CallbackQuery):
     except Exception as e:
         await call.answer(f"Error unmuting user: {str(e)}", show_alert=True)
 
+# Unban user handler - Admin only with permission
 @dp.callback_query(lambda c: c.data.startswith("unban_"))
 async def unban_user(call: types.CallbackQuery):
     user_id = int(call.data.split("_")[1])
+    
+    # Check if caller is admin
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can unban users!", show_alert=True)
+        return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to unban users!", show_alert=True)
+            return
+    
     try:
         await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
         await call.answer(f"🔓 User {user_id} unbanned successfully!")
@@ -367,9 +396,23 @@ async def unban_user(call: types.CallbackQuery):
     except Exception as e:
         await call.answer(f"Error unbanning user: {str(e)}", show_alert=True)
 
+# Re-add user handler - Admin only with permission
 @dp.callback_query(lambda c: c.data.startswith("readd_"))
 async def readd_user(call: types.CallbackQuery):
     user_id = int(call.data.split("_")[1])
+    
+    # Check if caller is admin
+    chat_member = await bot.get_chat_member(call.message.chat.id, call.from_user.id)
+    if chat_member.status not in ["administrator", "creator"]:
+        await call.answer("❌ Only admins can re-add users!", show_alert=True)
+        return
+    
+    # Check if admin has ban permission
+    if chat_member.status == "administrator":
+        if not chat_member.can_restrict_members:
+            await call.answer("❌ You need ban permission to re-add users!", show_alert=True)
+            return
+    
     try:
         await bot.unban_chat_member(chat_id=call.message.chat.id, user_id=user_id)
         await call.answer(f"🔄 User {user_id} can be re-added to the group!")
