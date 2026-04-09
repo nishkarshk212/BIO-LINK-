@@ -290,9 +290,10 @@ async def check_bio(message: types.Message):
             )
             
             # Notify owner
+            user_name = message.from_user.full_name or message.from_user.first_name or "Unknown"
             await notify_owner(
                 f"🚨 <b>Bio Link Penalty Applied</b>\n"
-                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"👤 User: {user_name} (ID: <code>{message.from_user.id}</code>)\n"
                 f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
                 f"⚡ Action: {penalty.capitalize()}\n"
                 f"⚠️ Warnings: {count}/{limit}"
@@ -366,9 +367,10 @@ async def monitor_edited_message(message: types.Message):
         return
     
     # Notify owner about edited message
+    user_name = message.from_user.full_name or message.from_user.first_name or "Unknown"
     await notify_owner(
         f"✏️ <b>Edited Message Detected</b>\n"
-        f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+        f"👤 User: {user_name} (ID: <code>{message.from_user.id}</code>)\n"
         f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
         f"📄 Message: {message.text or message.caption or 'Media/Non-text'[:100]}"
     )
@@ -449,9 +451,10 @@ async def monitor_edited_message(message: types.Message):
             )
             
             # Notify owner
+            user_name = message.from_user.full_name or message.from_user.first_name or "Unknown"
             await notify_owner(
                 f"🚨 <b>Edit Message Penalty Applied</b>\n"
-                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"👤 User: {user_name} (ID: <code>{message.from_user.id}</code>)\n"
                 f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
                 f"⚡ Action: Muted\n"
                 f"⚠️ Warnings: {count}/{limit}"
@@ -469,9 +472,10 @@ async def monitor_edited_message(message: types.Message):
             )
             
             # Notify owner
+            user_name = message.from_user.full_name or message.from_user.first_name or "Unknown"
             await notify_owner(
                 f"🚨 <b>Edit Message Penalty Applied</b>\n"
-                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"👤 User: {user_name} (ID: <code>{message.from_user.id}</code>)\n"
                 f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
                 f"⚡ Action: Kicked\n"
                 f"⚠️ Warnings: {count}/{limit}"
@@ -488,9 +492,10 @@ async def monitor_edited_message(message: types.Message):
             )
             
             # Notify owner
+            user_name = message.from_user.full_name or message.from_user.first_name or "Unknown"
             await notify_owner(
                 f"🚨 <b>Edit Message Penalty Applied</b>\n"
-                f"👤 User: {message.from_user.mention(html=True)} (ID: <code>{message.from_user.id}</code>)\n"
+                f"👤 User: {user_name} (ID: <code>{message.from_user.id}</code>)\n"
                 f"📝 Chat: {message.chat.title} (ID: <code>{message.chat.id}</code>)\n"
                 f"⚡ Action: Banned\n"
                 f"⚠️ Warnings: {count}/{limit}"
