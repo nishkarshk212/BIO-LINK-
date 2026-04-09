@@ -497,10 +497,11 @@ class NSFWDetector:
                 # Send detailed log to log channel if configured
                 if log_channel_id and category_details:
                     try:
+                        user_name = user.full_name or user.first_name or "Unknown"
                         log_msg = f"""
 🚨 <b>Harmful Profile Detected</b>
 
-👤 <b>User:</b> {user.mention(html=True)} (ID: <code>{user.id}</code>)
+👤 <b>User:</b> {user_name} (ID: <code>{user.id}</code>)
 🆔 <b>Username:</b> @{user.username or 'None'}
 📝 <b>{text_type.title()}:</b> {text[:500]}
 
@@ -557,8 +558,9 @@ class NSFWDetector:
                     kb.adjust(2)
                 
                 warning_text = Fonts.mono_upper(f"NSFW {text_type} detected!")
-                warning_msg = await chat.send_message(
-                    f"🚫 {warning_text}\n{Fonts.mono_upper(f'Inappropriate {text_type} is not allowed')}",
+                warning_msg = await bot.send_message(
+                    chat_id=chat.id,
+                    text=f"🚫 {warning_text}\n{Fonts.mono_upper(f'Inappropriate {text_type} is not allowed')}",
                     reply_markup=kb.as_markup() if nsfw_penalty != "warn" else None
                 )
                 
@@ -587,8 +589,9 @@ class NSFWDetector:
                         penalty_kb.button(text="✅ Unmute User", callback_data=f"unmute_{user.id}")
                         action_taken = True
                         penalty_text = Fonts.mono_upper("Muted!")
-                        await chat.send_message(
-                            f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
+                        await bot.send_message(
+                            chat_id=chat.id,
+                            text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                             reply_markup=penalty_kb.as_markup()
                         )
                     elif nsfw_penalty == "kick" and bot_member.can_restrict_members:
@@ -597,8 +600,9 @@ class NSFWDetector:
                         penalty_kb.button(text="🔄 Re-add User", callback_data=f"readd_{user.id}")
                         action_taken = True
                         penalty_text = Fonts.mono_upper("Kicked!")
-                        await chat.send_message(
-                            f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
+                        await bot.send_message(
+                            chat_id=chat.id,
+                            text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                             reply_markup=penalty_kb.as_markup()
                         )
                     elif nsfw_penalty == "ban" and bot_member.can_restrict_members:
@@ -606,14 +610,16 @@ class NSFWDetector:
                         penalty_kb.button(text="🔓 Unban User", callback_data=f"unban_{user.id}")
                         action_taken = True
                         penalty_text = Fonts.mono_upper("Banned!")
-                        await chat.send_message(
-                            f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
+                        await bot.send_message(
+                            chat_id=chat.id,
+                            text=f"⚠️ {penalty_text} {Fonts.mono_upper(f'Warning limit ({count}/{limit})')}",
                             reply_markup=penalty_kb.as_markup()
                         )
                     
                     if not action_taken and nsfw_penalty != "warn":
-                        await chat.send_message(
-                            f"🚨 {Fonts.mono_upper(f'User reached {limit} warnings')}\n{Fonts.mono_upper('Bot needs admin permission')}"
+                        await bot.send_message(
+                            chat_id=chat.id,
+                            text=f"🚨 {Fonts.mono_upper(f'User reached {limit} warnings')}\n{Fonts.mono_upper('Bot needs admin permission')}"
                         )
                     
                     break  # Only apply penalty once per join
